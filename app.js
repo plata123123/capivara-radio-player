@@ -1,1462 +1,925 @@
 /* =========================================================
-   CAPIVARA RÁDIO PLAYER
-   CORREÇÃO FINAL
-   1. VINHETAS OBEDECEM O CHECKBOX
-   2. REMOVE "15 PRODUTOS RÁPIDOS"
-   3. PLAYLISTS DO ADM APARECEM NO PLAYER
-   ========================================================= */
+   CAPIVARA RÁDIO — CORREÇÃO SOMENTE DAS VINHETAS
+   COLE ESTE BLOCO NO FINAL DO app.js
+========================================================= */
 
-/* =========================
-   PLAYLISTS ONLINE DO ADM
-========================= */
+(function () {
+  const CAP_SERVER_JINGLE =
+    'https://capivara-radio-server.onrender.com';
 
-const CAP_PLAY_SERVER =
-  'https://capivara-radio-server.onrender.com';
+  let capOnlineJingles = null;
+  let capOnlineJinglesTime = 0;
 
-let capPlaylists = [];
-let capMedia = [];
-let capPlaylistAtual = '';
-let capPlaylistPendente = '';
+  const capJingleTurn = {
+    opening: 0,
+    closing: 0,
+    topOpening: 0,
+    topClosing: 0
+  };
 
-function capPlaylistKey() {
-  return 'cap_playlist_' + String(store?.code || '');
-}
-
-function capNormalizeOnlineList(data, field) {
-  const list =
-    data?.[field] ??
-    data?.data ??
-    data ??
-    [];
-
-  if (Array.isArray(list)) {
-    return list;
+  function capNormJingle(v) {
+    return String(v || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
   }
 
-  if (list && typeof list === 'object') {
-    return Object.entries(list).map(([id, value]) => ({
-      id,
-      ...(value || {})
-    }));
-  }
+  function capJinglesLigadas() {
+    const check =
+      document.getElementById('jingles');
 
-  return [];
-}
-
-async function capGetOnlineJson(path) {
-  const response = await fetch(
-    CAP_PLAY_SERVER + path,
-    {
-      headers: {
-        Accept: 'application/json'
-      }
-    }
-  );
-
-  let json = {};
-
-  try {
-    json = await response.json();
-  } catch {}
-
-  if (!response.ok) {
-    throw new Error(
-      json?.error ||
-      json?.message ||
-      'HTTP ' + response.status
+    return !!(
+      check &&
+      check.checked === true
     );
   }
 
-  return json;
-}
-
-function capPlaylistById(id) {
-  return capPlaylists.find(
-    playlist =>
-      String(playlist.id) === String(id)
-  ) || null;
-}
-
-function capPlaylistAtualObj() {
-  return capPlaylistById(capPlaylistAtual);
-}
-
-function capPlaylistIds(playlist) {
-  if (!playlist) return [];
-
-  if (Array.isArray(playlist.musicIds)) {
-    return playlist.musicIds;
-  }
-
-  if (Array.isArray(playlist.music_ids)) {
-    return playlist.music_ids;
-  }
-
-  if (Array.isArray(playlist.tracks)) {
-    return playlist.tracks;
-  }
-
-  if (Array.isArray(playlist.songs)) {
-    return playlist.songs;
-  }
-
-  if (Array.isArray(playlist.items)) {
-    return playlist.items;
-  }
-
-  return [];
-}
-
-function capMusicasPlaylist() {
-  const playlist = capPlaylistAtualObj();
-
-  if (!playlist) {
-    return [];
-  }
-
-  const ids = capPlaylistIds(playlist);
-
-  const map = new Map(
-    capMedia.map(item => [
-      String(item.id),
-      item
-    ])
-  );
-
-  return ids
-    .map(item => {
-      if (item && typeof item === 'object') {
-        const id =
-          item.id ||
-          item.mediaId ||
-          item.media_id;
-
-        return (
-          map.get(String(id)) ||
-          item
-        );
-      }
-
-      return map.get(String(item));
-    })
-    .filter(Boolean);
-}
-
-function capMediaUrl(item) {
-  if (!item) return '';
-
-  if (
-    item.url &&
-    /^https?:\/\//i.test(item.url)
-  ) {
-    return item.url;
-  }
-
-  if (item.url) {
-    return (
-      CAP_PLAY_SERVER +
-      (String(item.url).startsWith('/') ? '' : '/') +
-      item.url
+  function capJingleRamoAtual() {
+    return capNormJingle(
+      store?.ramo ||
+      store?.type ||
+      ''
     );
   }
 
-  if (item.id) {
-    return (
-      CAP_PLAY_SERVER +
-      '/api/media/' +
-      encodeURIComponent(item.id)
-    );
-  }
+  function capTransformaLista(data) {
+    if (!data) return [];
 
-  return '';
-}
-
-function capEscape(value) {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function capEncontrarAreaPlaylist() {
-  let box =
-    document.getElementById('themeButtonsV11');
-
-  if (box) return box;
-
-  const radioPage =
-    document.getElementById('radio') ||
-    document.querySelector('[data-page="radio"]') ||
-    document.querySelector('.page.active');
-
-  if (!radioPage) return null;
-
-  box = document.createElement('div');
-
-  box.id = 'themeButtonsV11';
-  box.className = 'theme-buttons';
-
-  radioPage.appendChild(box);
-
-  return box;
-}
-
-function capTrocarTituloPlaylist() {
-  const box = capEncontrarAreaPlaylist();
-
-  if (!box) return;
-
-  const parent = box.parentElement;
-
-  if (!parent) return;
-
-  parent
-    .querySelectorAll(
-      'h1,h2,h3,h4,h5,strong,b,label,div'
-    )
-    .forEach(element => {
-      const text =
-        String(element.textContent || '')
-          .trim();
-
-      if (
-        /^escolha o tema da rádio$/i.test(text) ||
-        /^tema da rádio$/i.test(text)
-      ) {
-        element.textContent =
-          'ESCOLHA A PLAYLIST DA RÁDIO';
-      }
-    });
-}
-
-function capRenderPlaylists() {
-  const box = capEncontrarAreaPlaylist();
-
-  const status =
-    document.getElementById('themeStateV11');
-
-  if (!box) return;
-
-  capTrocarTituloPlaylist();
-
-  if (!capPlaylists.length) {
-    box.innerHTML =
-      '<div style="padding:14px;text-align:center;font-weight:700;width:100%;">Nenhuma playlist disponível.</div>';
-
-    if (status) {
-      status.textContent =
-        'O ADM precisa criar uma playlist.';
+    if (Array.isArray(data)) {
+      return data;
     }
 
-    return;
-  }
-
-  box.innerHTML = capPlaylists
-    .map(playlist => {
-      const active =
-        String(playlist.id) ===
-        String(capPlaylistAtual);
-
-      const pending =
-        String(playlist.id) ===
-        String(capPlaylistPendente);
-
-      return `
-        <button
-          type="button"
-          data-cap-playlist="${capEscape(playlist.id)}"
-          class="${active ? 'active' : ''} ${pending ? 'pending' : ''}"
-        >
-          ${capEscape(playlist.name || 'Playlist')}
-        </button>
-      `;
-    })
-    .join('');
-
-  box
-    .querySelectorAll('[data-cap-playlist]')
-    .forEach(button => {
-      button.onclick = () => {
-        capEscolherPlaylist(
-          button.getAttribute('data-cap-playlist')
-        );
-      };
-    });
-
-  if (status) {
-    if (capPlaylistPendente) {
-      const pending =
-        capPlaylistById(capPlaylistPendente);
-
-      status.textContent =
-        '⏳ ' +
-        (pending?.name || 'Nova playlist') +
-        ' entra quando a música terminar.';
-    } else {
-      status.textContent =
-        '🟢 Playlist ativa: ' +
-        (capPlaylistAtualObj()?.name || 'nenhuma');
+    if (Array.isArray(data.jingles)) {
+      return data.jingles;
     }
-  }
-}
 
-async function capSalvarPlaylist(id) {
-  capPlaylistAtual = String(id || '');
+    if (Array.isArray(data.data)) {
+      return data.data;
+    }
 
-  radioIndex = 0;
+    const raiz =
+      data.jingles ||
+      data.data ||
+      data;
 
-  if (capPlaylistAtual) {
-    localStorage.setItem(
-      capPlaylistKey(),
-      capPlaylistAtual
-    );
-  }
+    const saida = [];
 
-  capRenderPlaylists();
+    function andar(valor, contexto = {}) {
+      if (!valor) return;
 
-  if (!store?.code) return;
-
-  try {
-    let state = {};
-
-    try {
-      const response = await capGetOnlineJson(
-        '/api/client/' +
-        encodeURIComponent(store.code) +
-        '/state'
-      );
-
-      state =
-        response?.state ||
-        response?.data ||
-        response ||
-        {};
-    } catch {}
-
-    await fetch(
-      CAP_PLAY_SERVER +
-      '/api/client/' +
-      encodeURIComponent(store.code) +
-      '/state',
-      {
-        method: 'PUT',
-
-        headers: {
-          'Content-Type': 'application/json'
-        },
-
-        body: JSON.stringify({
-          ...state,
-          selectedPlaylistId: capPlaylistAtual,
-          selectedPlaylist: capPlaylistAtual,
-          updatedAt: new Date().toISOString()
-        })
-      }
-    );
-  } catch (error) {
-    console.warn(
-      'Playlist salva somente neste navegador.',
-      error
-    );
-  }
-}
-
-async function capEscolherPlaylist(id) {
-  id = String(id || '');
-
-  if (!id) return;
-
-  if (
-    playing &&
-    radioAudio &&
-    !radioAudio.paused
-  ) {
-    capPlaylistPendente = id;
-
-    capRenderPlaylists();
-
-    return;
-  }
-
-  capPlaylistPendente = '';
-
-  await capSalvarPlaylist(id);
-}
-
-async function capCarregarPlaylists() {
-  try {
-    const [
-      playlistResponse,
-      mediaResponse
-    ] = await Promise.all([
-      capGetOnlineJson('/api/playlists'),
-      capGetOnlineJson('/api/media')
-    ]);
-
-    capPlaylists =
-      capNormalizeOnlineList(
-        playlistResponse,
-        'playlists'
-      )
-        .filter(
-          playlist =>
-            playlist &&
-            playlist.active !== false
-        );
-
-    capMedia =
-      capNormalizeOnlineList(
-        mediaResponse,
-        'media'
-      )
-        .filter(item => {
-          const kind =
-            String(item?.kind || 'music')
-              .toLowerCase();
-
-          return kind === 'music';
+      if (Array.isArray(valor)) {
+        valor.forEach(item => {
+          if (
+            item &&
+            typeof item === 'object'
+          ) {
+            saida.push({
+              ...contexto,
+              ...item
+            });
+          }
         });
 
-    let wanted =
-      localStorage.getItem(
-        capPlaylistKey()
-      ) || '';
+        return;
+      }
 
-    if (store?.code) {
-      try {
-        const response =
-          await capGetOnlineJson(
-            '/api/client/' +
-            encodeURIComponent(store.code) +
-            '/state'
-          );
+      if (
+        typeof valor !== 'object'
+      ) {
+        return;
+      }
 
-        const state =
-          response?.state ||
-          response?.data ||
-          response ||
-          {};
+      const pareceVinheta =
+        valor.audioUrl ||
+        valor.audio_url ||
+        valor.url ||
+        valor.src ||
+        valor.mediaId ||
+        valor.media_id ||
+        valor.audioId ||
+        valor.audio_id ||
+        valor.audioKey;
 
-        wanted =
-          String(
-            state.selectedPlaylistId ||
-            state.selectedPlaylist ||
-            wanted ||
-            ''
-          );
-      } catch {}
+      if (pareceVinheta) {
+        saida.push({
+          ...contexto,
+          ...valor
+        });
+
+        return;
+      }
+
+      Object.entries(valor)
+        .forEach(([chave, filho]) => {
+          const n =
+            capNormJingle(chave);
+
+          const novo = {
+            ...contexto
+          };
+
+          if (
+            n === 'offeropen' ||
+            n === 'entrada' ||
+            n === 'opening' ||
+            n === 'abertura'
+          ) {
+            novo.category =
+              'offerOpen';
+          } else if (
+            n === 'offerclose' ||
+            n === 'saida' ||
+            n === 'closing' ||
+            n === 'fechamento'
+          ) {
+            novo.category =
+              'offerClose';
+          } else if (
+            n === 'topopen' ||
+            n === 'top entrada' ||
+            n === 'topentrada'
+          ) {
+            novo.category =
+              'topOpen';
+          } else if (
+            n === 'topclose' ||
+            n === 'top saida' ||
+            n === 'topsaida'
+          ) {
+            novo.category =
+              'topClose';
+          } else if (
+            !novo.ramo &&
+            typeof filho === 'object'
+          ) {
+            novo.ramo = chave;
+          }
+
+          andar(filho, novo);
+        });
+    }
+
+    andar(raiz);
+
+    return saida;
+  }
+
+  async function capCarregarVinhetasOnline(
+    force = false
+  ) {
+    if (
+      !force &&
+      capOnlineJingles &&
+      Date.now() -
+        capOnlineJinglesTime <
+        30000
+    ) {
+      return capOnlineJingles;
+    }
+
+    try {
+      const response =
+        await fetch(
+          CAP_SERVER_JINGLE +
+          '/api/jingles',
+          {
+            cache: 'no-store',
+            headers: {
+              Accept:
+                'application/json'
+            }
+          }
+        );
+
+      if (!response.ok) {
+        throw new Error(
+          'HTTP ' +
+          response.status
+        );
+      }
+
+      const json =
+        await response.json();
+
+      capOnlineJingles =
+        capTransformaLista(json);
+
+      capOnlineJinglesTime =
+        Date.now();
+
+      return capOnlineJingles;
+    } catch (e) {
+      console.warn(
+        'Vinhetas online indisponíveis:',
+        e
+      );
+
+      return [];
+    }
+  }
+
+  function capCategoriaVinheta(v) {
+    return capNormJingle(
+      v?.category ||
+      v?.categoria ||
+      v?.type ||
+      v?.tipo ||
+      v?.slot ||
+      v?.kind ||
+      v?.grupo ||
+      v?.group ||
+      ''
+    );
+  }
+
+  function capVinhetaDoRamo(v) {
+    const ramo =
+      capNormJingle(
+        v?.ramo ||
+        v?.segment ||
+        v?.activity ||
+        v?.businessType ||
+        v?.business_type ||
+        ''
+      );
+
+    if (!ramo) {
+      return true;
+    }
+
+    return (
+      ramo ===
+      capJingleRamoAtual()
+    );
+  }
+
+  function capEhCategoria(
+    v,
+    categoria
+  ) {
+    const c =
+      capCategoriaVinheta(v);
+
+    if (
+      categoria === 'opening'
+    ) {
+      return (
+        !c.includes('top') &&
+        (
+          c.includes('offeropen') ||
+          c.includes('entrada') ||
+          c.includes('opening') ||
+          c.includes('abertura') ||
+          c.includes('inicio')
+        )
+      );
     }
 
     if (
-      !capPlaylists.some(
-        playlist =>
-          String(playlist.id) ===
-          String(wanted)
+      categoria === 'closing'
+    ) {
+      return (
+        !c.includes('top') &&
+        (
+          c.includes('offerclose') ||
+          c.includes('saida') ||
+          c.includes('closing') ||
+          c.includes('fechamento') ||
+          c.includes('fim')
+        )
+      );
+    }
+
+    if (
+      categoria ===
+      'topOpening'
+    ) {
+      return (
+        (
+          c.includes('topopen') ||
+          (
+            c.includes('top') &&
+            (
+              c.includes('entrada') ||
+              c.includes('opening') ||
+              c.includes('abertura') ||
+              c.includes('inicio')
+            )
+          )
+        )
+      );
+    }
+
+    if (
+      categoria ===
+      'topClosing'
+    ) {
+      return (
+        (
+          c.includes('topclose') ||
+          (
+            c.includes('top') &&
+            (
+              c.includes('saida') ||
+              c.includes('closing') ||
+              c.includes('fechamento') ||
+              c.includes('fim')
+            )
+          )
+        )
+      );
+    }
+
+    return false;
+  }
+
+  function capUrlVinheta(v) {
+    if (!v) return '';
+
+    const direto =
+      v.audioUrl ||
+      v.audio_url ||
+      v.url ||
+      v.src;
+
+    if (
+      direto &&
+      /^https?:\/\//i.test(
+        direto
       )
     ) {
-      const firstWithMusic =
-        capPlaylists.find(
-          playlist =>
-            capPlaylistIds(playlist).length
+      return direto;
+    }
+
+    if (direto) {
+      return (
+        CAP_SERVER_JINGLE +
+        (
+          String(direto)
+            .startsWith('/')
+            ? ''
+            : '/'
+        ) +
+        direto
+      );
+    }
+
+    const id =
+      v.mediaId ||
+      v.media_id ||
+      v.audioId ||
+      v.audio_id ||
+      v.fileId ||
+      v.file_id;
+
+    if (id) {
+      return (
+        CAP_SERVER_JINGLE +
+        '/api/media/' +
+        encodeURIComponent(id)
+      );
+    }
+
+    return '';
+  }
+
+  async function capTocarVinhetaUrl(
+    url
+  ) {
+    if (!url) {
+      return false;
+    }
+
+    return await new Promise(
+      resolve => {
+        const audio =
+          new Audio(url);
+
+        window.capCurrentSpokenAudio =
+          audio;
+
+        audio.volume = 1;
+
+        let terminou = false;
+
+        function fim(ok) {
+          if (terminou) return;
+
+          terminou = true;
+
+          audio.onended = null;
+          audio.onerror = null;
+
+          resolve(ok);
+        }
+
+        audio.onended =
+          () => fim(true);
+
+        audio.onerror =
+          () => fim(false);
+
+        audio.play()
+          .catch(() => {
+            fim(false);
+          });
+      }
+    );
+  }
+
+  async function capVinhetaLocalAntiga(
+    kind
+  ) {
+    try {
+      const all =
+        JSON.parse(
+          localStorage.getItem(
+            'capivara_vignettes_v8'
+          ) || '{}'
         );
 
-      const first =
-        firstWithMusic ||
-        capPlaylists[0];
+      const ramo =
+        all[store.ramo] ||
+        all[store.type] ||
+        {};
 
-      wanted =
-        first
-          ? String(first.id)
-          : '';
-    }
+      const cat =
+        kind === 'opening'
+          ? 'offerOpen'
+          : 'offerClose';
 
-    capPlaylistAtual = wanted;
+      const arr =
+        Array.isArray(
+          ramo[cat]
+        )
+          ? ramo[cat]
+          : [];
 
-    if (capPlaylistAtual) {
-      localStorage.setItem(
-        capPlaylistKey(),
-        capPlaylistAtual
+      const prontas =
+        arr.filter(
+          v =>
+            v &&
+            (
+              v.audioKey ||
+              v.audioUrl ||
+              v.url ||
+              v.src
+            )
+        );
+
+      if (prontas.length) {
+        const chave =
+          kind === 'opening'
+            ? 'open'
+            : 'close';
+
+        if (
+          typeof capJingleCursorV36 ===
+          'undefined'
+        ) {
+          window.capJingleCursorV36 =
+            {
+              open: 0,
+              close: 0
+            };
+        }
+
+        const pos =
+          capJingleCursorV36[
+            chave
+          ] %
+          prontas.length;
+
+        capJingleCursorV36[
+          chave
+        ]++;
+
+        const v =
+          prontas[pos];
+
+        const url =
+          v.audioUrl ||
+          v.url ||
+          v.src;
+
+        if (url) {
+          return await capTocarVinhetaUrl(
+            url
+          );
+        }
+
+        if (
+          v.audioKey &&
+          typeof capGetDbBlobV36 ===
+            'function'
+        ) {
+          const blob =
+            await capGetDbBlobV36(
+              'CapivaraRadioAudio',
+              1,
+              'audios',
+              v.audioKey
+            );
+
+          if (blob) {
+            const temp =
+              URL.createObjectURL(
+                blob
+              );
+
+            const ok =
+              await capTocarVinhetaUrl(
+                temp
+              );
+
+            URL.revokeObjectURL(
+              temp
+            );
+
+            return ok;
+          }
+        }
+      }
+
+      const legacy =
+        JSON.parse(
+          localStorage.getItem(
+            'capivara_radio_jingles'
+          ) || '{}'
+        );
+
+      const j =
+        legacy[kind];
+
+      if (
+        j &&
+        !j.paused &&
+        j.active !== false
+      ) {
+        return await capTocarVinhetaUrl(
+          j.audioUrl ||
+          j.url ||
+          j.src
+        );
+      }
+    } catch (e) {
+      console.warn(
+        'Vinheta local:',
+        e
       );
     }
 
-    capRenderPlaylists();
-
-    capAtualizarStatusRadio();
-  } catch (error) {
-    console.error(
-      'Erro ao carregar playlists:',
-      error
-    );
-
-    const status =
-      document.getElementById('themeStateV11');
-
-    if (status) {
-      status.textContent =
-        'Não foi possível carregar as playlists.';
-    }
-  }
-}
-
-/* =========================
-   TOCAR MÚSICAS ONLINE
-========================= */
-
-async function capTocarProximaMusica() {
-  if (!playing) return;
-
-  if (capPlaylistPendente) {
-    capPlaylistAtual =
-      capPlaylistPendente;
-
-    capPlaylistPendente = '';
-
-    radioIndex = 0;
-
-    await capSalvarPlaylist(
-      capPlaylistAtual
-    );
+    return false;
   }
 
-  const musicas =
-    capMusicasPlaylist();
-
-  if (!musicas.length) {
-    const title =
-      document.getElementById('nowTitle');
-
-    const sub =
-      document.getElementById('nowSub');
-
-    if (title) {
-      title.textContent =
-        capPlaylists.length
-          ? 'Playlist sem músicas'
-          : 'Nenhuma playlist disponível';
+  async function capTocarVinhetaOnline(
+    categoria
+  ) {
+    if (!capJinglesLigadas()) {
+      return false;
     }
 
-    if (sub) {
-      sub.textContent =
-        capPlaylists.length
-          ? 'Escolha outra playlist.'
-          : 'O ADM precisa criar uma playlist.';
+    const todas =
+      await capCarregarVinhetasOnline();
+
+    const prontas =
+      todas.filter(v => {
+        if (!v) return false;
+
+        if (
+          v.active === false ||
+          v.ativo === false ||
+          v.paused === true ||
+          v.pausado === true
+        ) {
+          return false;
+        }
+
+        return (
+          capVinhetaDoRamo(v) &&
+          capEhCategoria(
+            v,
+            categoria
+          )
+        );
+      });
+
+    if (!prontas.length) {
+      return false;
     }
 
-    playing = false;
+    const pos =
+      capJingleTurn[
+        categoria
+      ] %
+      prontas.length;
 
-    if (typeof syncPlayUi === 'function') {
-      syncPlayUi();
-    }
+    capJingleTurn[
+      categoria
+    ]++;
 
-    return;
-  }
+    const vinheta =
+      prontas[pos];
 
-  if (radioIndex >= musicas.length) {
-    radioIndex = 0;
-  }
-
-  const musica =
-    musicas[radioIndex++];
-
-  const url =
-    capMediaUrl(musica);
-
-  if (!url) {
-    setTimeout(
-      capTocarProximaMusica,
-      500
-    );
-
-    return;
-  }
-
-  if (radioAudio) {
-    try {
-      radioAudio.pause();
-    } catch {}
-
-    radioAudio.onended = null;
-    radioAudio.onerror = null;
-  }
-
-  radioAudio = new Audio(url);
-
-  const volume =
-    Number(
-      document.getElementById('musicVol')?.value ||
-      75
-    );
-
-  radioAudio.volume =
-    Math.max(
-      0,
-      Math.min(1, volume / 100)
-    );
-
-  const title =
-    document.getElementById('nowTitle');
-
-  const sub =
-    document.getElementById('nowSub');
-
-  if (title) {
-    title.textContent =
-      musica.name || 'Música';
-  }
-
-  if (sub) {
-    sub.textContent =
-      '🎵 ' +
-      (
-        capPlaylistAtualObj()?.name ||
-        'Playlist'
+    const url =
+      capUrlVinheta(
+        vinheta
       );
+
+    if (!url) {
+      return false;
+    }
+
+    return await capTocarVinhetaUrl(
+      url
+    );
   }
 
-  radioAudio.onended =
-    async () => {
-      if (!playing) return;
+  async function capVinhetaFinal(
+    kind,
+    top = false
+  ) {
+    if (!capJinglesLigadas()) {
+      return false;
+    }
 
-      if (capPlaylistPendente) {
-        capPlaylistAtual =
-          capPlaylistPendente;
+    const categoria =
+      top
+        ? (
+          kind === 'opening'
+            ? 'topOpening'
+            : 'topClosing'
+        )
+        : (
+          kind === 'opening'
+            ? 'opening'
+            : 'closing'
+        );
 
-        capPlaylistPendente = '';
+    const online =
+      await capTocarVinhetaOnline(
+        categoria
+      );
 
-        radioIndex = 0;
+    if (online) {
+      return true;
+    }
 
-        await capSalvarPlaylist(
-          capPlaylistAtual
+    return await capVinhetaLocalAntiga(
+      kind
+    );
+  }
+
+  capOptionalJingleV16 =
+    async function (kind) {
+      return await capVinhetaFinal(
+        kind,
+        false
+      );
+    };
+
+  window.capOptionalJingleV16 =
+    capOptionalJingleV16;
+
+  const capRadioOriginalVinheta =
+    capRadioAfterMusicV16;
+
+  capRadioAfterMusicV16 =
+    async function () {
+      const active =
+        capActiveAdsV16();
+
+      if (!active.length) {
+        playNextAdmMusic();
+        return;
+      }
+
+      const qty =
+        Math.min(
+          capModeCountV16(),
+          active.length
+        );
+
+      const block = [];
+
+      for (
+        let i = 0;
+        i < qty;
+        i++
+      ) {
+        block.push(
+          active[
+            (
+              capAdCursorV16 +
+              i
+            ) %
+            active.length
+          ]
         );
       }
 
-      await capDepoisDaMusica();
-    };
+      capAdCursorV16 =
+        (
+          capAdCursorV16 +
+          qty
+        ) %
+        active.length;
 
-  radioAudio.onerror =
-    () => {
-      if (!playing) return;
+      const temTop =
+        block.some(
+          ad =>
+            ad &&
+            ad.top === true
+        );
 
-      setTimeout(
-        capTocarProximaMusica,
-        700
+      const titulo =
+        document.getElementById(
+          'nowTitle'
+        );
+
+      const sub =
+        document.getElementById(
+          'nowSub'
+        );
+
+      if (titulo) {
+        titulo.textContent =
+          'Bloco comercial';
+      }
+
+      if (
+        sub &&
+        capJinglesLigadas()
+      ) {
+        sub.textContent =
+          temTop
+            ? 'Vinheta TOP de entrada'
+            : 'Vinheta de entrada';
+      }
+
+      await capVinhetaFinal(
+        'opening',
+        temTop
       );
+
+      if (sub) {
+        sub.textContent =
+          'Anúncios no ar';
+      }
+
+      const bed =
+        typeof capStartBedV36 ===
+          'function'
+          ? await capStartBedV36()
+          : null;
+
+      try {
+        for (
+          const ad of block
+        ) {
+          if (
+            typeof capPlayAdV16 ===
+            'function'
+          ) {
+            await capPlayAdV16(
+              ad
+            );
+          }
+        }
+      } finally {
+        if (
+          typeof capStopBedV36 ===
+          'function'
+        ) {
+          capStopBedV36(
+            bed
+          );
+        }
+      }
+
+      if (
+        sub &&
+        capJinglesLigadas()
+      ) {
+        sub.textContent =
+          temTop
+            ? 'Vinheta TOP de saída'
+            : 'Vinheta de saída';
+      }
+
+      await capVinhetaFinal(
+        'closing',
+        temTop
+      );
+
+      playNextAdmMusic();
     };
 
-  try {
-    await radioAudio.play();
-  } catch (error) {
-    console.error(error);
+  window.capRadioAfterMusicV16 =
+    capRadioAfterMusicV16;
 
-    playing = false;
-
-    if (typeof syncPlayUi === 'function') {
-      syncPlayUi();
-    }
-  }
-}
-
-/* =========================
-   VINHETAS
-========================= */
-
-function capVinhetasAtivas() {
-  const checkbox =
-    document.getElementById('jingles');
-
-  if (!checkbox) {
-    return true;
-  }
-
-  return checkbox.checked === true;
-}
-
-async function capBuscarVinhetas() {
-  try {
-    const response =
-      await capGetOnlineJson('/api/jingles');
-
-    const jingles =
-      capNormalizeOnlineList(
-        response,
+  function capSalvarEstadoVinheta() {
+    const check =
+      document.getElementById(
         'jingles'
       );
 
-    return jingles.filter(item => {
-      if (!item) return false;
+    if (!check) return;
 
-      const ramo =
-        String(
-          item.ramo ||
-          item.segment ||
-          item.activity ||
-          ''
-        );
-
-      if (!ramo) return true;
-
-      return (
-        normRamo(ramo) ===
-        normRamo(store?.ramo)
+    const key =
+      'cap_jingles_' +
+      String(
+        store?.code ||
+        'default'
       );
-    });
-  } catch (error) {
-    console.warn(
-      'Vinhetas indisponíveis:',
-      error
-    );
 
-    return [];
-  }
-}
-
-function capTipoVinheta(item) {
-  return String(
-    item?.type ||
-    item?.tipo ||
-    item?.category ||
-    item?.categoria ||
-    ''
-  )
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase();
-}
-
-function capUrlVinheta(item) {
-  if (!item) return '';
-
-  if (
-    item.url &&
-    /^https?:\/\//i.test(item.url)
-  ) {
-    return item.url;
-  }
-
-  if (item.url) {
-    return (
-      CAP_PLAY_SERVER +
-      (
-        String(item.url).startsWith('/')
-          ? ''
-          : '/'
-      ) +
-      item.url
+    localStorage.setItem(
+      key,
+      check.checked
+        ? '1'
+        : '0'
     );
   }
 
-  const mediaId =
-    item.mediaId ||
-    item.media_id ||
-    item.audioId ||
-    item.audio_id ||
-    item.id;
+  function capCarregarEstadoVinheta() {
+    const check =
+      document.getElementById(
+        'jingles'
+      );
 
-  if (!mediaId) return '';
+    if (!check) return;
 
-  return (
-    CAP_PLAY_SERVER +
-    '/api/media/' +
-    encodeURIComponent(mediaId)
-  );
-}
+    const key =
+      'cap_jingles_' +
+      String(
+        store?.code ||
+        'default'
+      );
 
-async function capTocarUrl(url) {
-  if (!url || !playing) return;
-
-  await new Promise(resolve => {
-    const audio =
-      new Audio(url);
-
-    spokenAudio = audio;
-
-    audio.volume = 1;
-
-    audio.onended =
-      () => resolve();
-
-    audio.onerror =
-      () => resolve();
-
-    audio.play()
-      .catch(() => resolve());
-  });
-}
-
-async function capTocarVinheta(tipo) {
-  if (!capVinhetasAtivas()) {
-    return;
-  }
-
-  const jingles =
-    await capBuscarVinhetas();
-
-  if (!jingles.length) {
-    return;
-  }
-
-  const wanted =
-    String(tipo)
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase();
-
-  let candidates =
-    jingles.filter(item => {
-      const type =
-        capTipoVinheta(item);
-
-      if (wanted === 'entrada') {
-        return (
-          type === 'entrada' ||
-          type === 'opening' ||
-          type === 'inicio' ||
-          type === 'abertura'
-        );
-      }
-
-      if (wanted === 'saida') {
-        return (
-          type === 'saida' ||
-          type === 'closing' ||
-          type === 'fim' ||
-          type === 'fechamento'
-        );
-      }
-
-      if (wanted === 'top entrada') {
-        return (
-          type.includes('top') &&
-          (
-            type.includes('entrada') ||
-            type.includes('inicio') ||
-            type.includes('abertura')
-          )
-        );
-      }
-
-      if (wanted === 'top saida') {
-        return (
-          type.includes('top') &&
-          (
-            type.includes('saida') ||
-            type.includes('fim') ||
-            type.includes('fechamento')
-          )
-        );
-      }
-
-      return false;
-    });
-
-  if (!candidates.length) {
-    return;
-  }
-
-  const item =
-    candidates[
-      Math.floor(
-        Math.random() *
-        candidates.length
-      )
-    ];
-
-  const url =
-    capUrlVinheta(item);
-
-  if (url) {
-    await capTocarUrl(url);
-  }
-}
-
-/* =========================
-   BLOCO DE ANÚNCIOS
-========================= */
-
-function capAnunciosAtivos() {
-  const now = Date.now();
-
-  return (ads || []).filter(
-    ad =>
-      ad &&
-      !ad.paused &&
-      (
-        !ad.exp ||
-        ad.exp > now
-      )
-  );
-}
-
-function capQuantidadeBloco() {
-  const field =
-    document.getElementById(
-      'adsPerBlock'
-    );
-
-  let value =
-    Number(
-      field?.value ||
+    const saved =
       localStorage.getItem(
-        'cap_ads_per_block_' +
-        String(store?.code || '')
-      ) ||
-      3
-    );
+        key
+      );
 
-  if (
-    !Number.isFinite(value) ||
-    value < 1
-  ) {
-    value = 1;
-  }
-
-  return Math.min(50, value);
-}
-
-async function capTocarAnuncio(ad) {
-  if (!ad || !playing) return;
-
-  try {
-    if (
-      ad.url &&
-      /^https?:\/\//i.test(ad.url)
-    ) {
-      await capTocarUrl(ad.url);
-
-      return;
+    if (saved !== null) {
+      check.checked =
+        saved === '1';
     }
 
     if (
-      ad.mediaId ||
-      ad.media_id
+      !check.dataset
+        .capVinhetaFinal
     ) {
-      const mediaId =
-        ad.mediaId ||
-        ad.media_id;
+      check.dataset
+        .capVinhetaFinal =
+        '1';
 
-      await capTocarUrl(
-        CAP_PLAY_SERVER +
-        '/api/media/' +
-        encodeURIComponent(mediaId)
-      );
-
-      return;
-    }
-
-    if (
-      ad.audioKey &&
-      typeof capGetAdBlob === 'function'
-    ) {
-      const blob =
-        await capGetAdBlob(ad.audioKey);
-
-      if (!blob) return;
-
-      const url =
-        URL.createObjectURL(blob);
-
-      await capTocarUrl(url);
-
-      URL.revokeObjectURL(url);
-
-      return;
-    }
-
-    if (
-      ad.audioKey &&
-      typeof getAdBlob === 'function'
-    ) {
-      const blob =
-        await getAdBlob(ad.audioKey);
-
-      if (!blob) return;
-
-      const url =
-        URL.createObjectURL(blob);
-
-      await capTocarUrl(url);
-
-      URL.revokeObjectURL(url);
-    }
-  } catch (error) {
-    console.warn(
-      'Erro ao tocar anúncio:',
-      error
-    );
-  }
-}
-
-let capAdIndex = 0;
-
-async function capTocarBloco() {
-  if (!playing) return;
-
-  const active =
-    capAnunciosAtivos();
-
-  if (!active.length) {
-    return;
-  }
-
-  const qtd =
-    Math.min(
-      capQuantidadeBloco(),
-      active.length
-    );
-
-  const bloco = [];
-
-  for (
-    let i = 0;
-    i < qtd;
-    i++
-  ) {
-    if (
-      capAdIndex >=
-      active.length
-    ) {
-      capAdIndex = 0;
-    }
-
-    bloco.push(
-      active[capAdIndex++]
-    );
-  }
-
-  const temTop =
-    bloco.some(ad => ad.top);
-
-  if (capVinhetasAtivas()) {
-    if (temTop) {
-      await capTocarVinheta(
-        'top entrada'
-      );
-    } else {
-      await capTocarVinheta(
-        'entrada'
+      check.addEventListener(
+        'change',
+        capSalvarEstadoVinheta
       );
     }
   }
 
-  for (const ad of bloco) {
-    if (!playing) break;
+  const capApplyAntesVinheta =
+    applyAdmStore;
 
-    await capTocarAnuncio(ad);
-  }
-
-  if (
-    playing &&
-    capVinhetasAtivas()
-  ) {
-    if (temTop) {
-      await capTocarVinheta(
-        'top saida'
-      );
-    } else {
-      await capTocarVinheta(
-        'saida'
-      );
-    }
-  }
-}
-
-async function capDepoisDaMusica() {
-  if (!playing) return;
-
-  const active =
-    capAnunciosAtivos();
-
-  if (active.length) {
-    await capTocarBloco();
-  }
-
-  if (playing) {
-    await capTocarProximaMusica();
-  }
-}
-
-/* =========================
-   CHECKBOX VINHETAS
-========================= */
-
-function capBindVinhetas() {
-  const checkbox =
-    document.getElementById('jingles');
-
-  if (!checkbox) return;
-
-  const key =
-    'cap_jingles_' +
-    String(store?.code || 'default');
-
-  const saved =
-    localStorage.getItem(key);
-
-  if (saved !== null) {
-    checkbox.checked =
-      saved === '1';
-  }
-
-  checkbox.onchange =
-    () => {
-      localStorage.setItem(
-        key,
-        checkbox.checked
-          ? '1'
-          : '0'
-      );
-    };
-}
-
-/* =========================
-   REMOVE "15 PRODUTOS RÁPIDOS"
-========================= */
-
-function capRemoverTexto15Produtos() {
-  const walker =
-    document.createTreeWalker(
-      document.body,
-      NodeFilter.SHOW_TEXT
-    );
-
-  const nodes = [];
-
-  while (walker.nextNode()) {
-    nodes.push(
-      walker.currentNode
-    );
-  }
-
-  nodes.forEach(node => {
-    const text =
-      String(node.nodeValue || '');
-
-    if (
-      /15\s+produtos\s+r[aá]pidos/i
-        .test(text)
-    ) {
-      node.nodeValue =
-        text.replace(
-          /15\s+produtos\s+r[aá]pidos/ig,
-          'Produtos rápidos'
-        );
-    }
-  });
-}
-
-/* =========================
-   STATUS
-========================= */
-
-function capAtualizarStatusRadio() {
-  const info =
-    document.getElementById(
-      'admSyncInfo'
-    );
-
-  if (!info) return;
-
-  const playlist =
-    capPlaylistAtualObj();
-
-  const qtd =
-    capMusicasPlaylist().length;
-
-  info.innerHTML =
-    '✅ ' +
-    capEscape(store?.ramo || '') +
-    ' • <b>' +
-    capEscape(
-      playlist?.name ||
-      'Sem playlist'
-    ) +
-    '</b> • ' +
-    qtd +
-    ' música' +
-    (qtd === 1 ? '' : 's') +
-    ' online';
-}
-
-/* =========================
-   PLAY / PAUSE
-========================= */
-
-async function capPlayRadioFinal() {
-  if (!capClientReady) return;
-
-  if (playing) {
-    playing = false;
-
-    if (radioAudio) {
-      try {
-        radioAudio.pause();
-      } catch {}
-    }
-
-    if (spokenAudio) {
-      try {
-        spokenAudio.pause();
-      } catch {}
-    }
-
-    if (
-      typeof syncPlayUi ===
-      'function'
-    ) {
-      syncPlayUi();
-    }
-
-    const title =
-      document.getElementById(
-        'nowTitle'
-      );
-
-    const sub =
-      document.getElementById(
-        'nowSub'
-      );
-
-    if (title) {
-      title.textContent =
-        'Rádio pausada';
-    }
-
-    if (sub) {
-      sub.textContent =
-        'Escolha uma playlist e inicie quando quiser';
-    }
-
-    return;
-  }
-
-  if (!capPlaylists.length) {
-    await capCarregarPlaylists();
-  }
-
-  if (!capPlaylistAtual) {
-    alert(
-      'Escolha uma playlist.'
-    );
-
-    return;
-  }
-
-  if (
-    !capMusicasPlaylist().length
-  ) {
-    alert(
-      'Esta playlist está sem músicas.'
-    );
-
-    return;
-  }
-
-  playing = true;
-
-  if (
-    typeof syncPlayUi ===
-    'function'
-  ) {
-    syncPlayUi();
-  }
-
-  await capTocarProximaMusica();
-}
-
-/* =========================
-   APLICAR AO CLIENTE
-========================= */
-
-const capApplyOriginalFinal =
-  typeof applyAdmStore === 'function'
-    ? applyAdmStore
-    : null;
-
-if (capApplyOriginalFinal) {
   applyAdmStore =
-    async function(client) {
-      const result =
-        await capApplyOriginalFinal(
-          client
+    function (cliente) {
+      const retorno =
+        capApplyAntesVinheta(
+          cliente
         );
 
-      capPlaylistAtual =
-        localStorage.getItem(
-          'cap_playlist_' +
-          String(
-            client?.code ||
-            store?.code ||
-            ''
-          )
-        ) || '';
+      setTimeout(
+        () => {
+          capCarregarEstadoVinheta();
 
-      capPlaylistPendente = '';
+          capCarregarVinhetasOnline(
+            true
+          );
+        },
+        100
+      );
 
-      radioIndex = 0;
-
-      capBindVinhetas();
-
-      capRemoverTexto15Produtos();
-
-      await capCarregarPlaylists();
-
-      return result;
+      return retorno;
     };
 
   window.applyAdmStore =
     applyAdmStore;
-}
 
-/* =========================
-   SUBSTITUI FUNÇÕES ANTIGAS
-========================= */
-
-window.chooseThemeV11 =
-  capEscolherPlaylist;
-
-window.renderThemesV11 =
-  capRenderPlaylists;
-
-window.updateAdmStatus =
-  capAtualizarStatusRadio;
-
-window.playNextAdmMusic =
-  capTocarProximaMusica;
-
-window.capRadioAfterMusicV16 =
-  capDepoisDaMusica;
-
-try {
-  chooseThemeV11 =
-    capEscolherPlaylist;
-} catch {}
-
-try {
-  renderThemesV11 =
-    capRenderPlaylists;
-} catch {}
-
-try {
-  updateAdmStatus =
-    capAtualizarStatusRadio;
-} catch {}
-
-try {
-  playNextAdmMusic =
-    capTocarProximaMusica;
-} catch {}
-
-try {
-  capRadioAfterMusicV16 =
-    capDepoisDaMusica;
-} catch {}
-
-/* =========================
-   INICIALIZAÇÃO
-========================= */
-
-function capInicializarCorrecaoFinal() {
-  capRemoverTexto15Produtos();
-
-  capTrocarTituloPlaylist();
-
-  capBindVinhetas();
-
-  const play =
-    document.getElementById('play');
-
-  if (play) {
-    play.onclick =
-      capPlayRadioFinal;
-  }
-
-  const adsPerBlock =
-    document.getElementById(
-      'adsPerBlock'
-    );
-
-  if (adsPerBlock) {
-    const key =
-      'cap_ads_per_block_' +
-      String(store?.code || '');
-
-    const saved =
-      localStorage.getItem(key);
-
-    if (saved) {
-      adsPerBlock.value = saved;
+  document.addEventListener(
+    'DOMContentLoaded',
+    () => {
+      capCarregarEstadoVinheta();
     }
+  );
 
-    adsPerBlock.onchange =
-      () => {
-        let value =
-          Number(
-            adsPerBlock.value
-          );
-
-        if (
-          !Number.isFinite(value) ||
-          value < 1
-        ) {
-          value = 1;
-        }
-
-        adsPerBlock.value =
-          value;
-
-        localStorage.setItem(
-          key,
-          String(value)
-        );
-
-        if (
-          typeof capPushClientStateV50 ===
-          'function'
-        ) {
-          capPushClientStateV50();
-        }
-      };
-  }
-
-  if (
-    typeof capClientReady !==
-      'undefined' &&
-    capClientReady
-  ) {
-    capCarregarPlaylists();
-  }
-}
-
-document.addEventListener(
-  'DOMContentLoaded',
-  capInicializarCorrecaoFinal
-);
-
-window.addEventListener(
-  'load',
-  () => {
-    capInicializarCorrecaoFinal();
-
-    setTimeout(
-      capRemoverTexto15Produtos,
-      500
-    );
-  }
-);
-
-setInterval(
-  () => {
-    capRemoverTexto15Produtos();
-
-    if (
-      typeof capClientReady !==
-        'undefined' &&
-      capClientReady
-    ) {
-      capCarregarPlaylists();
+  window.addEventListener(
+    'load',
+    () => {
+      capCarregarEstadoVinheta();
     }
-  },
-  60000
-);
+  );
+})();
