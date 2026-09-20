@@ -350,17 +350,12 @@ async function createTexts(){
     signal:ctrl.signal,
     headers:{'Content-Type':'application/json','Accept':'application/json'},
     body:JSON.stringify({
-     prompt:promptForGemini(q),
      text:q,
-     pedido:q,
+     brief:q,
+     product:selectedProduct||'',
+     price:($('#price')?.value||'').trim(),
      ramo:store?.ramo||store?.type||'',
-     produto:selectedProduct||'',
-     preco:($('#price')?.value||'').trim(),
-     top:createMode==='top',
-     mentionStore:$('#mentionStore')?.checked===true,
-     fullCurrency:$('#fullCurrency')?.checked===true,
-     storeName:store?.name||'',
-     maxChars:150
+     model:'gemini-2.5-flash'
     })
    });
   }finally{clearTimeout(timer)}
@@ -368,7 +363,7 @@ async function createTexts(){
   let data={};try{data=await r.json()}catch{}
   if(!r.ok)throw new Error(data?.error||data?.message||('Servidor '+r.status));
 
-  let raw=data?.text||data?.frase||data?.response||data?.generated_text||data?.data?.text||'';
+  let raw=data?.text||'';
   raw=String(raw||'').trim()
    .replace(/^```(?:json)?\s*/i,'')
    .replace(/```$/,'')
@@ -443,14 +438,13 @@ async function capGenerateAudioDirectV201(text){
  text=String(text||'').trim().toLowerCase().slice(0,150);
  if(!text)throw new Error('O texto do anúncio está vazio.');
 
- // A próxima voz é definida pelo último anúncio realmente salvo.
+ // A voz só alterna depois de anúncio realmente salvo com sucesso.
  const last=[...ads].reverse().find(a=>a&&a.voice);
  const lastWasMale=last&&/mascul|homem/i.test(last.voice||'');
  const lastWasFemale=last&&/femin|mulher/i.test(last.voice||'');
  const female=lastWasMale?true:lastWasFemale?false:false;
  const voiceName=female?'Voz feminina':'Voz masculina';
 
- // V51 — ElevenLabs fica somente no servidor central.
  const r=await fetch(CAP_SERVER_V50+'/api/voice/generate',{
   method:'POST',
   headers:{
@@ -459,10 +453,7 @@ async function capGenerateAudioDirectV201(text){
   },
   body:JSON.stringify({
    text,
-   kind:'ad',
-   female,
-   gender:female?'female':'male',
-   voice:female?'female':'male'
+   voiceType:female?'adFemale':'adMale'
   })
  });
 
@@ -490,7 +481,6 @@ async function capGenerateAudioDirectV201(text){
   price:($('#price')?.value||'').trim()
  };
 }
-
 async function generateVoice(n,btn){
  let text=$('#text'+n).value.trim().toLowerCase().slice(0,150);
  if(!text)return;
@@ -1410,7 +1400,6 @@ function capResetCreateV20(){
 }
 
 // Mantido por compatibilidade com partes antigas da interface.
-// As IDs reais não precisam mais ficar expostas no Player.
 function capOfficialVoiceIdsV49(){
  return {
   adMale:'',
