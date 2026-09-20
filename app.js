@@ -1,101 +1,177 @@
 /* =========================================================
    CAPIVARA RÁDIO PLAYER
-   app.js COMPLETO
-   LOGIN + CLIENTE + IA + VOZ + PLAYLIST ONLINE + RÁDIO
-========================================================= */
+   CORREÇÃO FINAL
+   1. VINHETAS OBEDECEM O CHECKBOX
+   2. REMOVE "15 PRODUTOS RÁPIDOS"
+   3. PLAYLISTS DO ADM APARECEM NO PLAYER
+   ========================================================= */
 
-const $ = s => document.querySelector(s);
-const $$ = s => document.querySelectorAll(s);
+/* =========================
+   PLAYLISTS ONLINE DO ADM
+========================= */
 
-const CAP_SERVER = 'https://capivara-radio-server.onrender.com';
+const CAP_PLAY_SERVER =
+  'https://capivara-radio-server.onrender.com';
 
-let store = {
-  name: '',
-  type: '',
-  ramo: '',
-  code: ''
-};
+let capPlaylists = [];
+let capMedia = [];
+let capPlaylistAtual = '';
+let capPlaylistPendente = '';
 
-let capClientReady = false;
-let ads = [];
-let playing = false;
-let radioAudio = null;
-let spokenAudio = null;
-let bedAudio = null;
-let radioIndex = 0;
-let createMode = 'normal';
-
-let playlists = [];
-let onlineMedia = [];
-let selectedPlaylistId = '';
-let pendingPlaylistId = '';
-
-let selectedProduct = '';
-
-/* =========================================================
-   UTILIDADES
-========================================================= */
-
-function capClientKey(base) {
-  return base + '__' + String(store.code || 'SEM_CLIENTE');
+function capPlaylistKey() {
+  return 'cap_playlist_' + String(store?.code || '');
 }
 
-function safeJson(text, fallback = null) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return fallback;
-  }
-}
-
-function dayKey(ts = Date.now()) {
-  return new Date(ts).toLocaleDateString('en-CA');
-}
-
-function normalizeList(data, field) {
-  const value =
+function capNormalizeOnlineList(data, field) {
+  const list =
     data?.[field] ??
     data?.data ??
     data ??
     [];
 
-  if (Array.isArray(value)) return value;
+  if (Array.isArray(list)) {
+    return list;
+  }
 
-  if (value && typeof value === 'object') {
-    return Object.entries(value).map(([id, item]) => ({
+  if (list && typeof list === 'object') {
+    return Object.entries(list).map(([id, value]) => ({
       id,
-      ...(item || {})
+      ...(value || {})
     }));
   }
 
   return [];
 }
 
-async function getJson(path) {
-  const response = await fetch(CAP_SERVER + path, {
-    headers: {
-      Accept: 'application/json'
+async function capGetOnlineJson(path) {
+  const response = await fetch(
+    CAP_PLAY_SERVER + path,
+    {
+      headers: {
+        Accept: 'application/json'
+      }
     }
-  });
+  );
 
-  let data = {};
+  let json = {};
 
   try {
-    data = await response.json();
+    json = await response.json();
   } catch {}
 
   if (!response.ok) {
     throw new Error(
-      data?.error ||
-      data?.message ||
-      'Erro HTTP ' + response.status
+      json?.error ||
+      json?.message ||
+      'HTTP ' + response.status
     );
   }
 
-  return data;
+  return json;
 }
 
-function escapeHtml(value) {
+function capPlaylistById(id) {
+  return capPlaylists.find(
+    playlist =>
+      String(playlist.id) === String(id)
+  ) || null;
+}
+
+function capPlaylistAtualObj() {
+  return capPlaylistById(capPlaylistAtual);
+}
+
+function capPlaylistIds(playlist) {
+  if (!playlist) return [];
+
+  if (Array.isArray(playlist.musicIds)) {
+    return playlist.musicIds;
+  }
+
+  if (Array.isArray(playlist.music_ids)) {
+    return playlist.music_ids;
+  }
+
+  if (Array.isArray(playlist.tracks)) {
+    return playlist.tracks;
+  }
+
+  if (Array.isArray(playlist.songs)) {
+    return playlist.songs;
+  }
+
+  if (Array.isArray(playlist.items)) {
+    return playlist.items;
+  }
+
+  return [];
+}
+
+function capMusicasPlaylist() {
+  const playlist = capPlaylistAtualObj();
+
+  if (!playlist) {
+    return [];
+  }
+
+  const ids = capPlaylistIds(playlist);
+
+  const map = new Map(
+    capMedia.map(item => [
+      String(item.id),
+      item
+    ])
+  );
+
+  return ids
+    .map(item => {
+      if (item && typeof item === 'object') {
+        const id =
+          item.id ||
+          item.mediaId ||
+          item.media_id;
+
+        return (
+          map.get(String(id)) ||
+          item
+        );
+      }
+
+      return map.get(String(item));
+    })
+    .filter(Boolean);
+}
+
+function capMediaUrl(item) {
+  if (!item) return '';
+
+  if (
+    item.url &&
+    /^https?:\/\//i.test(item.url)
+  ) {
+    return item.url;
+  }
+
+  if (item.url) {
+    return (
+      CAP_PLAY_SERVER +
+      (String(item.url).startsWith('/') ? '' : '/') +
+      item.url
+    );
+  }
+
+  if (item.id) {
+    return (
+      CAP_PLAY_SERVER +
+      '/api/media/' +
+      encodeURIComponent(item.id)
+    );
+  }
+
+  return '';
+}
+
+function capEscape(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -103,634 +179,163 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
-/* =========================================================
-   CATÁLOGOS
-========================================================= */
+function capEncontrarAreaPlaylist() {
+  let box =
+    document.getElementById('themeButtonsV11');
 
-const productCatalogs = {
+  if (box) return box;
 
-  'Açougue': [
-    'picanha',
-    'alcatra',
-    'contrafilé',
-    'patinho',
-    'acém',
-    'costela',
-    'frango',
-    'linguiça',
-    'pernil',
-    'carne moída',
-    'maminha',
-    'cupim',
-    'coxão mole',
-    'coxão duro',
-    'fraldinha'
-  ],
+  const radioPage =
+    document.getElementById('radio') ||
+    document.querySelector('[data-page="radio"]') ||
+    document.querySelector('.page.active');
 
-  'Supermercado': [
-    'arroz',
-    'feijão',
-    'açúcar',
-    'café',
-    'óleo',
-    'leite',
-    'macarrão',
-    'farinha de trigo',
-    'carne',
-    'frango',
-    'ovos',
-    'papel higiênico',
-    'sabão em pó',
-    'refrigerante',
-    'cerveja'
-  ],
+  if (!radioPage) return null;
 
-  'Farmácia': [
-    'fraldas',
-    'lenços umedecidos',
-    'shampoo',
-    'condicionador',
-    'sabonete',
-    'desodorante',
-    'protetor solar',
-    'hidratante',
-    'creme dental',
-    'escova dental',
-    'absorvente',
-    'preservativo',
-    'vitaminas',
-    'repelente',
-    'algodão'
-  ],
+  box = document.createElement('div');
 
-  'Padaria': [
-    'pão francês',
-    'pão de queijo',
-    'pão doce',
-    'bolo',
-    'rosca',
-    'sonho',
-    'croissant',
-    'salgados',
-    'coxinha',
-    'empada',
-    'presunto',
-    'muçarela',
-    'leite',
-    'café',
-    'refrigerante'
-  ],
+  box.id = 'themeButtonsV11';
+  box.className = 'theme-buttons';
 
-  'Hortifruti': [
-    'banana',
-    'maçã',
-    'laranja',
-    'mamão',
-    'limão',
-    'abacaxi',
-    'manga',
-    'uva',
-    'tomate',
-    'batata',
-    'cebola',
-    'cenoura',
-    'alface',
-    'couve',
-    'ovos'
-  ],
+  radioPage.appendChild(box);
 
-  'Pet Shop': [
-    'ração para cães',
-    'ração para gatos',
-    'petiscos',
-    'areia para gatos',
-    'shampoo pet',
-    'antipulgas',
-    'brinquedos',
-    'coleiras',
-    'guias',
-    'camas',
-    'tapete higiênico',
-    'comedouros',
-    'sachês',
-    'ossinhos',
-    'banho e tosa'
-  ],
-
-  'Pizzaria': [
-    'pizza calabresa',
-    'pizza muçarela',
-    'pizza portuguesa',
-    'pizza frango com catupiry',
-    'pizza marguerita',
-    'pizza quatro queijos',
-    'pizza bacon',
-    'pizza carne seca',
-    'pizza chocolate',
-    'pizza doce',
-    'pizza família',
-    'combo pizza e refrigerante',
-    'refrigerante',
-    'borda recheada',
-    'delivery'
-  ],
-
-  'Lanchonete': [
-    'x-burguer',
-    'x-salada',
-    'x-bacon',
-    'x-tudo',
-    'hambúrguer artesanal',
-    'cachorro-quente',
-    'misto quente',
-    'batata frita',
-    'salgados',
-    'coxinha',
-    'pastel',
-    'açaí',
-    'suco',
-    'refrigerante',
-    'combo'
-  ],
-
-  'Restaurante': [
-    'prato feito',
-    'self-service',
-    'marmitex',
-    'almoço executivo',
-    'feijoada',
-    'churrasco',
-    'frango',
-    'peixe',
-    'massas',
-    'saladas',
-    'sobremesa',
-    'suco',
-    'refrigerante',
-    'delivery',
-    'combo do dia'
-  ],
-
-  'Hotel / Pousada': [
-    'diária',
-    'suíte',
-    'quarto casal',
-    'quarto família',
-    'café da manhã',
-    'pacote de fim de semana',
-    'pacote romântico',
-    'feriado',
-    'piscina',
-    'restaurante',
-    'estacionamento',
-    'wi-fi',
-    'day use',
-    'evento',
-    'reserva antecipada'
-  ],
-
-  'Roupas': [
-    'camiseta',
-    'camisa',
-    'calça jeans',
-    'bermuda',
-    'vestido',
-    'blusa',
-    'short',
-    'saia',
-    'conjunto',
-    'jaqueta',
-    'moletom',
-    'roupa infantil',
-    'moda íntima',
-    'pijama',
-    'promoção da coleção'
-  ],
-
-  'Calçados': [
-    'tênis',
-    'sapato social',
-    'sandália',
-    'chinelo',
-    'sapatilha',
-    'bota',
-    'tênis infantil',
-    'sandália infantil',
-    'sapato infantil',
-    'rasteirinha',
-    'scarpin',
-    'mocassim',
-    'papete',
-    'chuteira',
-    'promoção de calçados'
-  ],
-
-  'Material de Construção': [
-    'cimento',
-    'areia',
-    'brita',
-    'tijolo',
-    'telha',
-    'argamassa',
-    'tinta',
-    'piso',
-    'revestimento',
-    'tubo pvc',
-    'caixa d’água',
-    'ferramentas',
-    'portas',
-    'janelas',
-    'material elétrico'
-  ],
-
-  'Autopeças': [
-    'óleo do motor',
-    'filtro de óleo',
-    'filtro de ar',
-    'pastilha de freio',
-    'bateria',
-    'palheta',
-    'lâmpada',
-    'correia',
-    'vela de ignição',
-    'amortecedor',
-    'pneu',
-    'aditivo',
-    'kit embreagem',
-    'rolamento',
-    'acessórios'
-  ],
-
-  'Oficina / Auto Center': [
-    'troca de óleo',
-    'alinhamento',
-    'balanceamento',
-    'freios',
-    'suspensão',
-    'troca de pneus',
-    'revisão',
-    'ar-condicionado',
-    'injeção eletrônica',
-    'embreagem',
-    'bateria',
-    'escapamento',
-    'correia dentada',
-    'diagnóstico',
-    'higienização'
-  ],
-
-  'Posto / Conveniência': [
-    'gasolina',
-    'etanol',
-    'diesel',
-    'óleo lubrificante',
-    'aditivo',
-    'calibragem',
-    'lavagem',
-    'café',
-    'água',
-    'refrigerante',
-    'energético',
-    'salgados',
-    'sanduíche',
-    'gelo',
-    'carvão'
-  ],
-
-  'Cosméticos / Perfumaria': [
-    'perfume feminino',
-    'perfume masculino',
-    'hidratante',
-    'shampoo',
-    'condicionador',
-    'maquiagem',
-    'batom',
-    'base',
-    'protetor solar',
-    'desodorante',
-    'kit presente',
-    'creme facial',
-    'esmalte',
-    'sabonete',
-    'produtos para cabelo'
-  ],
-
-  'Ótica': [
-    'óculos de grau',
-    'óculos de sol',
-    'armação feminina',
-    'armação masculina',
-    'armação infantil',
-    'lentes',
-    'lentes multifocais',
-    'lentes de contato',
-    'antirreflexo',
-    'filtro de luz azul',
-    'clip-on',
-    'exame de vista',
-    'ajuste de armação',
-    'kit limpeza',
-    'promoção de armações'
-  ],
-
-  'Papelaria': [
-    'caderno',
-    'caneta',
-    'lápis',
-    'borracha',
-    'mochila',
-    'estojo',
-    'papel a4',
-    'impressão',
-    'xerox',
-    'material escolar',
-    'cartolina',
-    'cola',
-    'tesoura',
-    'agenda',
-    'kit escolar'
-  ],
-
-  'Móveis / Eletro': [
-    'sofá',
-    'cama',
-    'colchão',
-    'guarda-roupa',
-    'mesa',
-    'cadeira',
-    'rack',
-    'geladeira',
-    'fogão',
-    'máquina de lavar',
-    'televisão',
-    'micro-ondas',
-    'ventilador',
-    'air fryer',
-    'liquidificador'
-  ],
-
-  'Agropecuária / Rações': [
-    'ração para cães',
-    'ração para gatos',
-    'ração para aves',
-    'ração para equinos',
-    'ração para bovinos',
-    'milho',
-    'sal mineral',
-    'sementes',
-    'adubo',
-    'ferramentas',
-    'bebedouro',
-    'comedouro',
-    'produtos veterinários',
-    'selaria',
-    'acessórios rurais'
-  ],
-
-  'Distribuidora de Bebidas': [
-    'água',
-    'refrigerante',
-    'suco',
-    'energético',
-    'cerveja',
-    'gelo',
-    'água com gás',
-    'isotônico',
-    'chá gelado',
-    'tônica',
-    'carvão',
-    'copos descartáveis',
-    'combo para festa',
-    'fardo de água',
-    'fardo de refrigerante'
-  ],
-
-  'Utilidades / Variedades': [
-    'panelas',
-    'potes',
-    'copos',
-    'pratos',
-    'talheres',
-    'baldes',
-    'vassouras',
-    'produtos de limpeza',
-    'organizadores',
-    'toalhas',
-    'tapetes',
-    'ferramentas',
-    'brinquedos',
-    'material escolar',
-    'itens para cozinha'
-  ]
-};
-
-function normRamo(v) {
-  return String(v || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase();
+  return box;
 }
 
-function catalogForRamo(ramo) {
-  const key = Object.keys(productCatalogs)
-    .find(k => normRamo(k) === normRamo(ramo));
+function capTrocarTituloPlaylist() {
+  const box = capEncontrarAreaPlaylist();
 
-  return key
-    ? [...productCatalogs[key]]
-    : [];
+  if (!box) return;
+
+  const parent = box.parentElement;
+
+  if (!parent) return;
+
+  parent
+    .querySelectorAll(
+      'h1,h2,h3,h4,h5,strong,b,label,div'
+    )
+    .forEach(element => {
+      const text =
+        String(element.textContent || '')
+          .trim();
+
+      if (
+        /^escolha o tema da rádio$/i.test(text) ||
+        /^tema da rádio$/i.test(text)
+      ) {
+        element.textContent =
+          'ESCOLHA A PLAYLIST DA RÁDIO';
+      }
+    });
 }
 
-/* =========================================================
-   CLIENTE
-========================================================= */
+function capRenderPlaylists() {
+  const box = capEncontrarAreaPlaylist();
 
-async function capServerClient(code) {
+  const status =
+    document.getElementById('themeStateV11');
 
-  const controller = new AbortController();
+  if (!box) return;
 
-  const timer = setTimeout(
-    () => controller.abort(),
-    20000
-  );
+  capTrocarTituloPlaylist();
+
+  if (!capPlaylists.length) {
+    box.innerHTML =
+      '<div style="padding:14px;text-align:center;font-weight:700;width:100%;">Nenhuma playlist disponível.</div>';
+
+    if (status) {
+      status.textContent =
+        'O ADM precisa criar uma playlist.';
+    }
+
+    return;
+  }
+
+  box.innerHTML = capPlaylists
+    .map(playlist => {
+      const active =
+        String(playlist.id) ===
+        String(capPlaylistAtual);
+
+      const pending =
+        String(playlist.id) ===
+        String(capPlaylistPendente);
+
+      return `
+        <button
+          type="button"
+          data-cap-playlist="${capEscape(playlist.id)}"
+          class="${active ? 'active' : ''} ${pending ? 'pending' : ''}"
+        >
+          ${capEscape(playlist.name || 'Playlist')}
+        </button>
+      `;
+    })
+    .join('');
+
+  box
+    .querySelectorAll('[data-cap-playlist]')
+    .forEach(button => {
+      button.onclick = () => {
+        capEscolherPlaylist(
+          button.getAttribute('data-cap-playlist')
+        );
+      };
+    });
+
+  if (status) {
+    if (capPlaylistPendente) {
+      const pending =
+        capPlaylistById(capPlaylistPendente);
+
+      status.textContent =
+        '⏳ ' +
+        (pending?.name || 'Nova playlist') +
+        ' entra quando a música terminar.';
+    } else {
+      status.textContent =
+        '🟢 Playlist ativa: ' +
+        (capPlaylistAtualObj()?.name || 'nenhuma');
+    }
+  }
+}
+
+async function capSalvarPlaylist(id) {
+  capPlaylistAtual = String(id || '');
+
+  radioIndex = 0;
+
+  if (capPlaylistAtual) {
+    localStorage.setItem(
+      capPlaylistKey(),
+      capPlaylistAtual
+    );
+  }
+
+  capRenderPlaylists();
+
+  if (!store?.code) return;
 
   try {
-
-    const response = await fetch(
-      CAP_SERVER +
-      '/api/client/' +
-      encodeURIComponent(code),
-      {
-        signal: controller.signal,
-        headers: {
-          Accept: 'application/json'
-        }
-      }
-    );
-
-    let data = {};
+    let state = {};
 
     try {
-      data = await response.json();
+      const response = await capGetOnlineJson(
+        '/api/client/' +
+        encodeURIComponent(store.code) +
+        '/state'
+      );
+
+      state =
+        response?.state ||
+        response?.data ||
+        response ||
+        {};
     } catch {}
 
-    if (response.status === 404) {
-      return null;
-    }
-
-    if (!response.ok) {
-      throw new Error('Servidor ' + response.status);
-    }
-
-    const c =
-      data?.client ||
-      data?.data ||
-      data;
-
-    if (!c || !(c.code || c.codigo)) {
-      return null;
-    }
-
-    return {
-      name:
-        c.name ||
-        c.nome ||
-        c.storeName ||
-        'Loja',
-
-      ramo:
-        c.ramo ||
-        c.activity ||
-        c.segment ||
-        'Açougue',
-
-      code:
-        String(
-          c.code ||
-          c.codigo
-        ),
-
-      active:
-        c.active !== false &&
-        c.ativo !== false
-    };
-
-  } finally {
-
-    clearTimeout(timer);
-  }
-}
-
-/* =========================================================
-   ESTADO DO CLIENTE
-========================================================= */
-
-function loadLocalClientState() {
-
-  capClientReady = true;
-
-  ads = safeJson(
-    localStorage.getItem(
-      capClientKey('cap_ads')
-    ) || '[]',
-    []
-  );
-
-  if (!Array.isArray(ads)) {
-    ads = [];
-  }
-
-  selectedPlaylistId =
-    localStorage.getItem(
-      capClientKey('cap_playlist')
-    ) || '';
-
-  createMode = 'normal';
-}
-
-async function pullClientState() {
-
-  if (!store.code) return;
-
-  try {
-
-    const response = await fetch(
-      CAP_SERVER +
-      '/api/client/' +
-      encodeURIComponent(store.code) +
-      '/state',
-      {
-        headers: {
-          Accept: 'application/json'
-        }
-      }
-    );
-
-    if (!response.ok) return;
-
-    const json = await response.json();
-
-    const state =
-      json?.state ||
-      json?.data ||
-      json ||
-      {};
-
-    if (Array.isArray(state.ads)) {
-
-      ads = state.ads.filter(
-        ad =>
-          !ad.clientCode ||
-          String(ad.clientCode) ===
-          String(store.code)
-      );
-
-      localStorage.setItem(
-        capClientKey('cap_ads'),
-        JSON.stringify(ads)
-      );
-    }
-
-    const serverPlaylist =
-      state.selectedPlaylistId ||
-      state.selectedPlaylist ||
-      '';
-
-    if (serverPlaylist) {
-
-      selectedPlaylistId =
-        String(serverPlaylist);
-
-      localStorage.setItem(
-        capClientKey('cap_playlist'),
-        selectedPlaylistId
-      );
-    }
-
-    renderAds();
-
-  } catch (error) {
-
-    console.warn(
-      'Estado online indisponível.',
-      error
-    );
-  }
-}
-
-async function pushClientState() {
-
-  if (!store.code) return;
-
-  try {
-
-    const safeAds = ads.map(ad => ({
-      ...ad,
-      clientCode: String(store.code)
-    }));
-
     await fetch(
-      CAP_SERVER +
+      CAP_PLAY_SERVER +
       '/api/client/' +
       encodeURIComponent(store.code) +
       '/state',
@@ -742,1936 +347,22 @@ async function pushClientState() {
         },
 
         body: JSON.stringify({
-          ads: safeAds,
-          selectedPlaylistId,
-          selectedPlaylist:
-            selectedPlaylistId,
-          updatedAt:
-            new Date().toISOString()
+          ...state,
+          selectedPlaylistId: capPlaylistAtual,
+          selectedPlaylist: capPlaylistAtual,
+          updatedAt: new Date().toISOString()
         })
       }
     );
-
   } catch (error) {
-
     console.warn(
-      'Não foi possível sincronizar agora.',
+      'Playlist salva somente neste navegador.',
       error
     );
   }
 }
 
-/* =========================================================
-   ABRIR CLIENTE
-========================================================= */
-
-async function applyAdmStore(client) {
-
-  stopAllAudio();
-
-  store = {
-    name: client.name,
-    type: client.ramo,
-    ramo: client.ramo,
-    code: String(client.code)
-  };
-
-  loadLocalClientState();
-
-  const storeName =
-    document.getElementById('storeName');
-
-  if (storeName) {
-    storeName.textContent = store.name;
-  }
-
-  loadProducts();
-
-  renderAds();
-
-  await pullClientState();
-
-  await loadOnlineRadio();
-
-  renderProducts();
-
-  renderPlaylists();
-
-  updateRadioStatus();
-}
-
-/* =========================================================
-   LOGIN
-========================================================= */
-
-async function loginPlayer() {
-
-  const input =
-    document.getElementById('code');
-
-  const button =
-    document.getElementById('enter');
-
-  const message =
-    document.getElementById('loginMsg');
-
-  if (!input || !button) return;
-
-  const code =
-    String(input.value || '')
-      .replace(/\D/g, '')
-      .slice(0, 6);
-
-  input.value = code;
-
-  if (!/^\d{6}$/.test(code)) {
-
-    if (message) {
-      message.textContent =
-        'Digite o código de 6 dígitos';
-    }
-
-    return;
-  }
-
-  const original =
-    button.textContent;
-
-  button.disabled = true;
-
-  button.textContent =
-    'CONECTANDO...';
-
-  if (message) {
-    message.textContent = '';
-  }
-
-  try {
-
-    const client =
-      await capServerClient(code);
-
-    if (!client) {
-
-      if (message) {
-        message.textContent =
-          'Código não encontrado';
-      }
-
-      return;
-    }
-
-    if (client.active === false) {
-
-      if (message) {
-        message.textContent =
-          'Rádio bloqueada pelo administrador';
-      }
-
-      return;
-    }
-
-    await applyAdmStore(client);
-
-    const login =
-      document.getElementById('login');
-
-    const app =
-      document.getElementById('app');
-
-    if (login) {
-      login.classList.add('hidden');
-    }
-
-    if (app) {
-      app.classList.remove('hidden');
-    }
-
-  } catch (error) {
-
-    console.error(error);
-
-    if (message) {
-
-      message.textContent =
-        error?.name === 'AbortError'
-          ? 'Servidor demorou para responder. Tente novamente.'
-          : 'Não foi possível conectar ao servidor';
-    }
-
-  } finally {
-
-    button.disabled = false;
-
-    button.textContent =
-      original;
-  }
-}
-
-/* =========================================================
-   PRODUTOS
-========================================================= */
-
-let products = [];
-
-function productKey() {
-  return capClientKey('cap_products');
-}
-
-function loadProducts() {
-
-  const base =
-    catalogForRamo(store.ramo);
-
-  const saved =
-    safeJson(
-      localStorage.getItem(productKey()),
-      null
-    );
-
-  if (
-    Array.isArray(saved) &&
-    saved.length
-  ) {
-    products = saved;
-  } else {
-    products = base;
-  }
-
-  while (products.length < 15) {
-    products.push(
-      'item ' + (products.length + 1)
-    );
-  }
-
-  products = products.slice(0, 15);
-
-  localStorage.setItem(
-    productKey(),
-    JSON.stringify(products)
-  );
-}
-
-function saveProducts() {
-
-  localStorage.setItem(
-    productKey(),
-    JSON.stringify(products)
-  );
-
-  renderProducts();
-}
-
-function selectProduct(name) {
-
-  selectedProduct = name;
-
-  const selected =
-    document.getElementById(
-      'selectedProduct'
-    );
-
-  const selectedName =
-    document.getElementById(
-      'selectedName'
-    );
-
-  if (selected) {
-    selected.classList.remove('hidden');
-  }
-
-  if (selectedName) {
-    selectedName.textContent = name;
-  }
-
-  $$('#favorites button')
-    .forEach(button => {
-
-      button.classList.toggle(
-        'selected',
-        button.dataset.product === name
-      );
-    });
-
-  const price =
-    document.getElementById('price');
-
-  if (price) {
-    price.focus();
-  }
-}
-
-function renderProducts() {
-
-  const box =
-    document.getElementById(
-      'favorites'
-    );
-
-  if (!box) return;
-
-  box.innerHTML = '';
-
-  products.forEach((name, index) => {
-
-    const button =
-      document.createElement('button');
-
-    button.type = 'button';
-
-    button.dataset.product = name;
-
-    button.textContent = name;
-
-    button.onclick =
-      () => selectProduct(name);
-
-    button.ondblclick = event => {
-
-      event.preventDefault();
-
-      const value = prompt(
-        'Editar',
-        products[index]
-      );
-
-      if (
-        value &&
-        value.trim()
-      ) {
-
-        products[index] =
-          value.trim().toLowerCase();
-
-        saveProducts();
-      }
-    };
-
-    box.appendChild(button);
-  });
-}
-
-/* =========================================================
-   PREÇO
-========================================================= */
-
-function bindPrice() {
-
-  const input =
-    document.getElementById('price');
-
-  if (!input) return;
-
-  input.addEventListener(
-    'input',
-    event => {
-
-      let digits =
-        event.target.value
-          .replace(/\D/g, '')
-          .slice(0, 8);
-
-      if (!digits) {
-
-        event.target.value = '';
-
-        return;
-      }
-
-      const value =
-        parseInt(digits, 10) / 100;
-
-      event.target.value =
-        value.toLocaleString(
-          'pt-BR',
-          {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-          }
-        );
-    }
-  );
-}
-
-/* =========================================================
-   LIMITES
-========================================================= */
-
-function capLimits() {
-
-  const config =
-    safeJson(
-      localStorage.getItem(
-        'capivara_admin_settings'
-      ),
-      {}
-    ) || {};
-
-  return {
-    daily:
-      Math.max(
-        1,
-        parseInt(
-          config.dailyLimit || 15,
-          10
-        )
-      ),
-
-    weekly:
-      Math.max(
-        1,
-        parseInt(
-          config.weeklyLimit || 75,
-          10
-        )
-      ),
-
-    top:
-      Math.max(
-        0,
-        parseInt(
-          config.topDailyLimit ?? 1,
-          10
-        )
-      )
-  };
-}
-
-function usage() {
-
-  const value =
-    safeJson(
-      localStorage.getItem(
-        capClientKey(
-          'cap_daily_usage'
-        )
-      ),
-      {}
-    ) || {};
-
-  if (value.day !== dayKey()) {
-
-    return {
-      day: dayKey(),
-      count: 0,
-      topCount: 0
-    };
-  }
-
-  return {
-    day: value.day,
-    count: Number(value.count || 0),
-    topCount:
-      Number(value.topCount || 0)
-  };
-}
-
-function todayCreated() {
-  return usage().count;
-}
-
-function topCreatedToday() {
-  return usage().topCount;
-}
-
-function registerUse(top) {
-
-  const u = usage();
-
-  u.count++;
-
-  if (top) {
-    u.topCount++;
-  }
-
-  localStorage.setItem(
-    capClientKey(
-      'cap_daily_usage'
-    ),
-    JSON.stringify(u)
-  );
-}
-
-/* =========================================================
-   IA DE TEXTO
-========================================================= */
-
-function promptForGemini(info) {
-
-  const top =
-    createMode === 'top';
-
-  const mention =
-    document.getElementById(
-      'mentionStore'
-    )?.checked === true;
-
-  const fullCurrency =
-    document.getElementById(
-      'fullCurrency'
-    )?.checked === true;
-
-  return `
-você é um locutor e redator de rádio comercial brasileiro.
-
-ramo do comércio: ${store.ramo}.
-
-crie apenas uma chamada comercial curta, natural e profissional.
-
-regras obrigatórias:
-máximo de 150 caracteres.
-escreva em letras minúsculas.
-não use emojis.
-não use dois pontos.
-não fale o ramo do comércio.
-não invente preço.
-não invente desconto.
-não invente características.
-preserve exatamente a forma de venda informada.
-${mention
-  ? `pode mencionar o nome ${store.name}.`
-  : 'não mencione o nome do estabelecimento.'}
-${fullCurrency
-  ? 'escreva preços por extenso incluindo reais e centavos.'
-  : 'em preços não diga as palavras reais ou centavos. exemplo 4,77 vira quatro e setenta e sete.'}
-${top
-  ? 'é um top do dia. dê mais impacto e urgência sem exagerar.'
-  : ''}
-informação do cliente:
-${info}
-
-responda somente com a frase.
-`.trim();
-}
-
-async function createTexts() {
-
-  const limits =
-    capLimits();
-
-  if (
-    todayCreated() >=
-    limits.daily
-  ) {
-
-    alert(
-      'O limite diário de anúncios foi atingido.'
-    );
-
-    return;
-  }
-
-  if (
-    createMode === 'top' &&
-    topCreatedToday() >=
-    limits.top
-  ) {
-
-    alert(
-      'O limite diário de TOP foi atingido.'
-    );
-
-    return;
-  }
-
-  const brief =
-    document.getElementById('brief');
-
-  let info =
-    String(
-      brief?.value || ''
-    ).trim();
-
-  if (selectedProduct) {
-
-    const price =
-      String(
-        document.getElementById(
-          'price'
-        )?.value || ''
-      ).trim();
-
-    info =
-      (
-        info
-          ? info + '; '
-          : ''
-      ) +
-      selectedProduct +
-      (
-        price
-          ? '; preço ' + price
-          : ''
-      );
-  }
-
-  if (!info) {
-
-    alert(
-      'Escolha um item ou escreva o que deseja anunciar.'
-    );
-
-    return;
-  }
-
-  const button =
-    document.getElementById(
-      'suggest'
-    );
-
-  if (button) {
-
-    button.disabled = true;
-
-    button.textContent =
-      'CRIANDO...';
-  }
-
-  try {
-
-    const response =
-      await fetch(
-        CAP_SERVER +
-        '/api/ai/generate',
-        {
-          method: 'POST',
-
-          headers: {
-            'Content-Type':
-              'application/json',
-            Accept:
-              'application/json'
-          },
-
-          body: JSON.stringify({
-            prompt:
-              promptForGemini(info),
-
-            text: info,
-            pedido: info,
-            ramo: store.ramo,
-            produto:
-              selectedProduct,
-            preco:
-              document.getElementById(
-                'price'
-              )?.value || '',
-            top:
-              createMode === 'top',
-            storeName:
-              store.name,
-            maxChars: 150
-          })
-        }
-      );
-
-    let data = {};
-
-    try {
-      data =
-        await response.json();
-    } catch {}
-
-    if (!response.ok) {
-
-      throw new Error(
-        data?.error ||
-        data?.message ||
-        'Servidor ' +
-        response.status
-      );
-    }
-
-    let text =
-      data?.text ||
-      data?.frase ||
-      data?.response ||
-      data?.generated_text ||
-      data?.data?.text ||
-      '';
-
-    text =
-      String(text)
-        .trim()
-        .replace(
-          /^```(?:json)?\s*/i,
-          ''
-        )
-        .replace(/```$/g, '')
-        .replace(
-          /^["']|["']$/g,
-          ''
-        )
-        .trim()
-        .toLowerCase()
-        .slice(0, 150);
-
-    if (!text) {
-
-      throw new Error(
-        'A IA não retornou a frase.'
-      );
-    }
-
-    if (brief) {
-      brief.value = text;
-    }
-
-    const text1 =
-      document.getElementById(
-        'text1'
-      );
-
-    if (text1) {
-      text1.value = text;
-    }
-
-    document.body.dataset
-      .v24stage = 'phrase';
-
-    updateCreateUi();
-
-  } catch (error) {
-
-    console.error(error);
-
-    alert(
-      'Não foi possível criar o anúncio.\n\n' +
-      (
-        error?.message ||
-        error
-      )
-    );
-
-  } finally {
-
-    if (button) {
-
-      button.disabled = false;
-
-      button.textContent =
-        '✨ CRIAR ANÚNCIO';
-    }
-  }
-}
-
-/* =========================================================
-   VOZ
-========================================================= */
-
-function nextVoice() {
-
-  const last =
-    [...ads]
-      .reverse()
-      .find(ad => ad?.voice);
-
-  if (!last) {
-    return 'male';
-  }
-
-  return /mascul|homem/i.test(
-    String(last.voice)
-  )
-    ? 'female'
-    : 'male';
-}
-
-async function generateVoice(text) {
-
-  const voice =
-    nextVoice();
-
-  const response =
-    await fetch(
-      CAP_SERVER +
-      '/api/voice/generate',
-      {
-        method: 'POST',
-
-        headers: {
-          'Content-Type':
-            'application/json',
-          Accept:
-            'audio/mpeg'
-        },
-
-        body: JSON.stringify({
-          text,
-          voice,
-          gender: voice,
-          type: 'ad',
-          ramo: store.ramo
-        })
-      }
-    );
-
-  if (!response.ok) {
-
-    let message =
-      'Erro ao gerar voz';
-
-    try {
-
-      const json =
-        await response.json();
-
-      message =
-        json?.error ||
-        json?.message ||
-        message;
-
-    } catch {}
-
-    throw new Error(message);
-  }
-
-  const blob =
-    await response.blob();
-
-  return {
-    blob,
-    voice,
-    voiceName:
-      voice === 'male'
-        ? 'Voz masculina'
-        : 'Voz feminina'
-  };
-}
-
-/* =========================================================
-   ÁUDIO LOCAL DOS ANÚNCIOS
-========================================================= */
-
-function openAdsDb() {
-
-  return new Promise(
-    (resolve, reject) => {
-
-      const request =
-        indexedDB.open(
-          'CapivaraAdsV19',
-          1
-        );
-
-      request.onupgradeneeded =
-        () => {
-
-          if (
-            !request.result
-              .objectStoreNames
-              .contains('audio')
-          ) {
-
-            request.result
-              .createObjectStore(
-                'audio'
-              );
-          }
-        };
-
-      request.onsuccess =
-        () =>
-          resolve(
-            request.result
-          );
-
-      request.onerror =
-        () =>
-          reject(
-            request.error
-          );
-    }
-  );
-}
-
-async function saveAdBlob(
-  key,
-  blob
-) {
-
-  const db =
-    await openAdsDb();
-
-  return new Promise(
-    (resolve, reject) => {
-
-      const request =
-        db
-          .transaction(
-            'audio',
-            'readwrite'
-          )
-          .objectStore('audio')
-          .put(blob, key);
-
-      request.onsuccess =
-        () => resolve(true);
-
-      request.onerror =
-        () =>
-          reject(
-            request.error
-          );
-    }
-  );
-}
-
-async function getAdBlob(key) {
-
-  const db =
-    await openAdsDb();
-
-  return new Promise(
-    (resolve, reject) => {
-
-      const request =
-        db
-          .transaction('audio')
-          .objectStore('audio')
-          .get(key);
-
-      request.onsuccess =
-        () =>
-          resolve(
-            request.result
-          );
-
-      request.onerror =
-        () =>
-          reject(
-            request.error
-          );
-    }
-  );
-}
-
-/* =========================================================
-   GERAR ÁUDIO E JÁ ENVIAR PARA PROGRAMAÇÃO
-========================================================= */
-
-async function generateAndQueue() {
-
-  if (window.capAudioBusy) {
-    return;
-  }
-
-  window.capAudioBusy = true;
-
-  const button =
-    document.getElementById(
-      'generateAudioV24'
-    ) ||
-    document.getElementById(
-      'generateAudioV22'
-    ) ||
-    document.querySelector(
-      '[data-gen="1"]'
-    );
-
-  try {
-
-    if (button) {
-
-      button.disabled = true;
-
-      button.textContent =
-        'GERANDO ÁUDIO...';
-    }
-
-    const brief =
-      document.getElementById(
-        'brief'
-      );
-
-    const text =
-      String(
-        brief?.value || ''
-      )
-        .trim()
-        .toLowerCase()
-        .slice(0, 150);
-
-    if (!text) {
-
-      throw new Error(
-        'O texto do anúncio está vazio.'
-      );
-    }
-
-    const limits =
-      capLimits();
-
-    if (
-      todayCreated() >=
-      limits.daily
-    ) {
-
-      throw new Error(
-        'O limite diário de anúncios foi atingido.'
-      );
-    }
-
-    if (
-      createMode === 'top' &&
-      topCreatedToday() >=
-      limits.top
-    ) {
-
-      throw new Error(
-        'O limite diário de TOP foi atingido.'
-      );
-    }
-
-    const voiceResult =
-      await generateVoice(text);
-
-    const id =
-      'ad_' +
-      Date.now() +
-      '_' +
-      Math.random()
-        .toString(36)
-        .slice(2, 7);
-
-    const audioKey =
-      'cliente:' +
-      store.code +
-      ':audio:' +
-      id;
-
-    await saveAdBlob(
-      audioKey,
-      voiceResult.blob
-    );
-
-    const duration =
-      Number(
-        document.getElementById(
-          'duration'
-        )?.value || 1
-      );
-
-    const days =
-      duration > 0
-        ? duration
-        : 1;
-
-    const exp =
-      Date.now() +
-      days *
-      86400000;
-
-    const label =
-      selectedProduct ||
-      (
-        createMode === 'top'
-          ? 'top do dia'
-          : 'anúncio'
-      );
-
-    ads.push({
-      id,
-      label,
-      product:
-        selectedProduct || '',
-      text,
-      voice:
-        voiceResult.voiceName,
-      paused: false,
-      exp,
-      audioKey,
-      top:
-        createMode === 'top',
-      createdDay:
-        dayKey(),
-      clientCode:
-        store.code
-    });
-
-    registerUse(
-      createMode === 'top'
-    );
-
-    saveAds();
-
-    createMode = 'normal';
-
-    resetCreation(true);
-
-  } catch (error) {
-
-    console.error(error);
-
-    alert(
-      'Não foi possível gerar o áudio.\n\n' +
-      (
-        error?.message ||
-        error
-      )
-    );
-
-  } finally {
-
-    window.capAudioBusy = false;
-
-    if (button) {
-
-      button.disabled = false;
-
-      button.textContent =
-        '🔊 GERAR ÁUDIO';
-    }
-  }
-}
-
-/* =========================================================
-   ANÚNCIOS
-========================================================= */
-
-function saveAds() {
-
-  if (!capClientReady) {
-    return;
-  }
-
-  localStorage.setItem(
-    capClientKey('cap_ads'),
-    JSON.stringify(ads)
-  );
-
-  renderAds();
-
-  pushClientState();
-}
-
-function renderAds() {
-
-  const box =
-    document.getElementById('ads');
-
-  const now =
-    Date.now();
-
-  ads = ads.filter(
-    ad =>
-      !ad.exp ||
-      ad.exp > now
-  );
-
-  if (capClientReady) {
-
-    localStorage.setItem(
-      capClientKey('cap_ads'),
-      JSON.stringify(ads)
-    );
-  }
-
-  if (!box) return;
-
-  box.innerHTML = '';
-
-  if (!ads.length) {
-
-    box.innerHTML =
-      '<div class="empty">Nenhum anúncio ativo.</div>';
-
-    return;
-  }
-
-  ads.forEach(
-    (ad, index) => {
-
-      const row =
-        document.createElement(
-          'div'
-        );
-
-      row.className =
-        'ad' +
-        (
-          ad.top
-            ? ' top-ad'
-            : ''
-        );
-
-      row.innerHTML = `
-        <div class="copy">
-          <b>
-            ${
-              ad.top
-                ? '<span class="top-badge">🔥 TOP DO DIA</span> '
-                : ''
-            }
-            ${escapeHtml(ad.label || 'anúncio')}
-          </b>
-
-          <small>
-            ${escapeHtml(ad.voice || '')}
-            •
-            ${
-              ad.paused
-                ? 'Pausado'
-                : 'Na programação'
-            }
-          </small>
-
-          <div class="ad-hidden-text hidden">
-            ${escapeHtml(ad.text || '')}
-          </div>
-        </div>
-
-        <button type="button" data-view="${index}">
-          ver texto
-        </button>
-
-        <button type="button" data-pause="${index}">
-          ${
-            ad.paused
-              ? '▶'
-              : '⏸'
-          }
-        </button>
-
-        <button type="button" data-delete="${index}">
-          🗑
-        </button>
-      `;
-
-      box.appendChild(row);
-    }
-  );
-
-  $$('[data-view]')
-    .forEach(button => {
-
-      button.onclick =
-        () => {
-
-          const row =
-            button.closest('.ad');
-
-          const text =
-            row?.querySelector(
-              '.ad-hidden-text'
-            );
-
-          if (!text) return;
-
-          text.classList.toggle(
-            'hidden'
-          );
-
-          button.textContent =
-            text.classList
-              .contains('hidden')
-              ? 'ver texto'
-              : 'ocultar';
-        };
-    });
-
-  $$('[data-pause]')
-    .forEach(button => {
-
-      button.onclick =
-        () => {
-
-          const index =
-            Number(
-              button.dataset.pause
-            );
-
-          if (!ads[index]) return;
-
-          ads[index].paused =
-            !ads[index].paused;
-
-          saveAds();
-        };
-    });
-
-  $$('[data-delete]')
-    .forEach(button => {
-
-      button.onclick =
-        () => {
-
-          const index =
-            Number(
-              button.dataset.delete
-            );
-
-          if (!ads[index]) return;
-
-          ads.splice(index, 1);
-
-          saveAds();
-        };
-    });
-}
-
-/* =========================================================
-   TOP DO DIA
-========================================================= */
-
-function setCreateMode(mode) {
-
-  createMode = mode;
-
-  const status =
-    document.getElementById(
-      'topStatus'
-    );
-
-  const button =
-    document.getElementById(
-      'topDay'
-    );
-
-  if (status) {
-
-    status.classList.toggle(
-      'hidden',
-      mode !== 'top'
-    );
-  }
-
-  if (button) {
-
-    button.classList.toggle(
-      'active',
-      mode === 'top'
-    );
-  }
-}
-
-function toggleTop() {
-
-  const limits =
-    capLimits();
-
-  if (
-    topCreatedToday() >=
-    limits.top
-  ) {
-
-    alert(
-      'O limite diário de TOP foi atingido.'
-    );
-
-    return;
-  }
-
-  setCreateMode(
-    createMode === 'top'
-      ? 'normal'
-      : 'top'
-  );
-}
-
-/* =========================================================
-   RESET DA CRIAÇÃO
-========================================================= */
-
-function resetCreation(
-  clearText = true
-) {
-
-  if (clearText) {
-
-    const brief =
-      document.getElementById(
-        'brief'
-      );
-
-    if (brief) {
-      brief.value = '';
-    }
-
-    const text1 =
-      document.getElementById(
-        'text1'
-      );
-
-    if (text1) {
-      text1.value = '';
-    }
-  }
-
-  selectedProduct = '';
-
-  const price =
-    document.getElementById(
-      'price'
-    );
-
-  if (price) {
-    price.value = '';
-  }
-
-  const selected =
-    document.getElementById(
-      'selectedProduct'
-    );
-
-  if (selected) {
-    selected.classList.add(
-      'hidden'
-    );
-  }
-
-  $$('#favorites button')
-    .forEach(button => {
-
-      button.classList.remove(
-        'selected'
-      );
-    });
-
-  document.body.dataset
-    .v24stage = 'start';
-
-  updateCreateUi();
-}
-
-function desistCreation() {
-
-  selectedProduct = '';
-
-  const price =
-    document.getElementById(
-      'price'
-    );
-
-  if (price) {
-    price.value = '';
-  }
-
-  document.body.dataset
-    .v24stage = 'start';
-
-  setCreateMode('normal');
-
-  updateCreateUi();
-}
-
-function updateCreateUi() {
-
-  const phraseReady =
-    document.body.dataset
-      .v24stage === 'phrase';
-
-  const create =
-    document.getElementById(
-      'suggest'
-    );
-
-  const top =
-    document.getElementById(
-      'topDay'
-    );
-
-  const audio =
-    document.getElementById(
-      'generateAudioV24'
-    ) ||
-    document.getElementById(
-      'generateAudioV22'
-    ) ||
-    document.querySelector(
-      '[data-gen="1"]'
-    );
-
-  const desist =
-    document.getElementById(
-      'desistV25'
-    );
-
-  if (create) {
-
-    create.style.display =
-      phraseReady
-        ? 'none'
-        : '';
-  }
-
-  if (top) {
-
-    top.style.display =
-      phraseReady
-        ? 'none'
-        : '';
-  }
-
-  if (audio) {
-
-    audio.style.display =
-      phraseReady
-        ? ''
-        : 'none';
-
-    audio.textContent =
-      '🔊 GERAR ÁUDIO';
-  }
-
-  if (desist) {
-
-    desist.style.display =
-      phraseReady
-        ? ''
-        : 'none';
-  }
-}
-
-/* =========================================================
-   PLAYLISTS ONLINE
-========================================================= */
-
-function currentPlaylist() {
-
-  return playlists.find(
-    playlist =>
-      String(playlist.id) ===
-      String(selectedPlaylistId)
-  ) || null;
-}
-
-function playlistMusicIds(
-  playlist
-) {
-
-  if (!playlist) return [];
-
-  if (
-    Array.isArray(
-      playlist.musicIds
-    )
-  ) {
-    return playlist.musicIds;
-  }
-
-  if (
-    Array.isArray(
-      playlist.music_ids
-    )
-  ) {
-    return playlist.music_ids;
-  }
-
-  if (
-    Array.isArray(
-      playlist.tracks
-    )
-  ) {
-    return playlist.tracks;
-  }
-
-  if (
-    Array.isArray(
-      playlist.songs
-    )
-  ) {
-    return playlist.songs;
-  }
-
-  return [];
-}
-
-function currentPlaylistSongs() {
-
-  const playlist =
-    currentPlaylist();
-
-  if (!playlist) {
-    return [];
-  }
-
-  const ids =
-    playlistMusicIds(
-      playlist
-    );
-
-  const map =
-    new Map(
-      onlineMedia.map(
-        media => [
-          String(media.id),
-          media
-        ]
-      )
-    );
-
-  return ids
-    .map(item => {
-
-      if (
-        item &&
-        typeof item === 'object'
-      ) {
-
-        const id =
-          item.id ||
-          item.mediaId ||
-          item.media_id;
-
-        return (
-          map.get(
-            String(id)
-          ) ||
-          item
-        );
-      }
-
-      return map.get(
-        String(item)
-      );
-    })
-    .filter(Boolean);
-}
-
-function mediaUrl(media) {
-
-  if (!media) {
-    return '';
-  }
-
-  if (
-    media.url &&
-    /^https?:\/\//i.test(
-      media.url
-    )
-  ) {
-    return media.url;
-  }
-
-  if (media.url) {
-
-    return (
-      CAP_SERVER +
-      (
-        String(media.url)
-          .startsWith('/')
-          ? ''
-          : '/'
-      ) +
-      media.url
-    );
-  }
-
-  if (media.id) {
-
-    return (
-      CAP_SERVER +
-      '/api/media/' +
-      encodeURIComponent(
-        media.id
-      )
-    );
-  }
-
-  return '';
-}
-
-async function loadOnlineRadio() {
-
-  try {
-
-    const [
-      playlistData,
-      mediaData
-    ] =
-      await Promise.all([
-        getJson(
-          '/api/playlists'
-        ),
-        getJson(
-          '/api/media'
-        )
-      ]);
-
-    playlists =
-      normalizeList(
-        playlistData,
-        'playlists'
-      )
-        .filter(
-          playlist =>
-            playlist &&
-            playlist.active !== false
-        );
-
-    onlineMedia =
-      normalizeList(
-        mediaData,
-        'media'
-      )
-        .filter(media => {
-
-          const kind =
-            String(
-              media?.kind ||
-              'music'
-            ).toLowerCase();
-
-          return kind === 'music';
-        });
-
-    if (
-      !selectedPlaylistId
-    ) {
-
-      selectedPlaylistId =
-        localStorage.getItem(
-          capClientKey(
-            'cap_playlist'
-          )
-        ) || '';
-    }
-
-    if (
-      !playlists.some(
-        playlist =>
-          String(playlist.id) ===
-          String(
-            selectedPlaylistId
-          )
-      )
-    ) {
-
-      const first =
-        playlists.find(
-          playlist =>
-            playlistMusicIds(
-              playlist
-            ).length
-        ) ||
-        playlists[0];
-
-      selectedPlaylistId =
-        first
-          ? String(first.id)
-          : '';
-    }
-
-    if (selectedPlaylistId) {
-
-      localStorage.setItem(
-        capClientKey(
-          'cap_playlist'
-        ),
-        selectedPlaylistId
-      );
-    }
-
-    renderPlaylists();
-
-    updateRadioStatus();
-
-  } catch (error) {
-
-    console.error(
-      'Erro playlists:',
-      error
-    );
-
-    const status =
-      document.getElementById(
-        'themeStateV11'
-      );
-
-    if (status) {
-
-      status.textContent =
-        'Não foi possível carregar as playlists online.';
-    }
-  }
-}
-
-function retitlePlaylistArea() {
-
-  const box =
-    document.getElementById(
-      'themeButtonsV11'
-    );
-
-  if (!box) return;
-
-  const parent =
-    box.parentElement;
-
-  if (!parent) return;
-
-  const elements =
-    parent.querySelectorAll(
-      'h1,h2,h3,h4,strong,b,div'
-    );
-
-  for (
-    const element of elements
-  ) {
-
-    if (
-      /^escolha o tema da rádio$/i
-        .test(
-          String(
-            element.textContent ||
-            ''
-          ).trim()
-        )
-    ) {
-
-      element.textContent =
-        'ESCOLHA A PLAYLIST DA RÁDIO';
-
-      break;
-    }
-  }
-}
-
-function renderPlaylists() {
-
-  retitlePlaylistArea();
-
-  const box =
-    document.getElementById(
-      'themeButtonsV11'
-    );
-
-  const status =
-    document.getElementById(
-      'themeStateV11'
-    );
-
-  if (!box) return;
-
-  if (!playlists.length) {
-
-    box.innerHTML = `
-      <div style="
-        width:100%;
-        padding:14px;
-        text-align:center;
-        font-weight:800
-      ">
-        Nenhuma playlist disponível.
-      </div>
-    `;
-
-    if (status) {
-
-      status.textContent =
-        'O ADM precisa criar uma playlist.';
-    }
-
-    return;
-  }
-
-  box.innerHTML =
-    playlists.map(
-      playlist => {
-
-        const active =
-          String(
-            playlist.id
-          ) ===
-          String(
-            selectedPlaylistId
-          );
-
-        const pending =
-          String(
-            playlist.id
-          ) ===
-          String(
-            pendingPlaylistId
-          );
-
-        return `
-          <button
-            type="button"
-            class="
-              ${active ? 'active' : ''}
-              ${pending ? 'pending' : ''}
-            "
-            data-playlist="${escapeHtml(playlist.id)}"
-          >
-            ${escapeHtml(playlist.name || 'Playlist')}
-          </button>
-        `;
-      }
-    ).join('');
-
-  box.querySelectorAll(
-    '[data-playlist]'
-  ).forEach(button => {
-
-    button.onclick =
-      () =>
-        choosePlaylist(
-          button.dataset.playlist
-        );
-  });
-
-  if (status) {
-
-    if (pendingPlaylistId) {
-
-      const pending =
-        playlists.find(
-          playlist =>
-            String(
-              playlist.id
-            ) ===
-            String(
-              pendingPlaylistId
-            )
-        );
-
-      status.textContent =
-        '⏳ ' +
-        (
-          pending?.name ||
-          'Nova playlist'
-        ) +
-        ' entra quando a música terminar.';
-
-    } else {
-
-      status.textContent =
-        '🟢 Playlist ativa: ' +
-        (
-          currentPlaylist()?.name ||
-          'nenhuma'
-        );
-    }
-  }
-}
-
-async function savePlaylistChoice(
-  id
-) {
-
-  selectedPlaylistId =
-    String(id || '');
-
-  radioIndex = 0;
-
-  localStorage.setItem(
-    capClientKey(
-      'cap_playlist'
-    ),
-    selectedPlaylistId
-  );
-
-  renderPlaylists();
-
-  updateRadioStatus();
-
-  await pushClientState();
-}
-
-async function choosePlaylist(id) {
-
+async function capEscolherPlaylist(id) {
   id = String(id || '');
 
   if (!id) return;
@@ -2681,367 +372,515 @@ async function choosePlaylist(id) {
     radioAudio &&
     !radioAudio.paused
   ) {
+    capPlaylistPendente = id;
 
-    pendingPlaylistId =
-      id;
-
-    renderPlaylists();
+    capRenderPlaylists();
 
     return;
   }
 
-  pendingPlaylistId = '';
+  capPlaylistPendente = '';
 
-  await savePlaylistChoice(
-    id
-  );
+  await capSalvarPlaylist(id);
 }
 
-/* =========================================================
-   STATUS DA RÁDIO
-========================================================= */
-
-function updateRadioStatus() {
-
-  const info =
-    document.getElementById(
-      'admSyncInfo'
-    );
-
-  if (!info) return;
-
-  const count =
-    currentPlaylistSongs()
-      .length;
-
-  info.innerHTML = `
-    ✅ ${escapeHtml(store.ramo)}
-    •
-    <b>
-      ${escapeHtml(
-        currentPlaylist()?.name ||
-        'Sem playlist'
-      )}
-    </b>
-    •
-    ${count}
-    música${count === 1 ? '' : 's'}
-    online
-  `;
-}
-
-/* =========================================================
-   PLAYER DE ÁUDIO
-========================================================= */
-
-function musicVolume() {
-
-  const value =
-    Number(
-      document.getElementById(
-        'musicVol'
-      )?.value || 75
-    );
-
-  return Math.max(
-    0,
-    Math.min(
-      1,
-      value / 100
-    )
-  );
-}
-
-function bedVolume() {
-
-  const value =
-    Number(
-      document.getElementById(
-        'bedVol'
-      )?.value || 6
-    );
-
-  return Math.max(
-    0,
-    Math.min(
-      1,
-      value / 100
-    )
-  );
-}
-
-function stopAllAudio() {
-
+async function capCarregarPlaylists() {
   try {
+    const [
+      playlistResponse,
+      mediaResponse
+    ] = await Promise.all([
+      capGetOnlineJson('/api/playlists'),
+      capGetOnlineJson('/api/media')
+    ]);
 
-    if (radioAudio) {
-      radioAudio.pause();
+    capPlaylists =
+      capNormalizeOnlineList(
+        playlistResponse,
+        'playlists'
+      )
+        .filter(
+          playlist =>
+            playlist &&
+            playlist.active !== false
+        );
+
+    capMedia =
+      capNormalizeOnlineList(
+        mediaResponse,
+        'media'
+      )
+        .filter(item => {
+          const kind =
+            String(item?.kind || 'music')
+              .toLowerCase();
+
+          return kind === 'music';
+        });
+
+    let wanted =
+      localStorage.getItem(
+        capPlaylistKey()
+      ) || '';
+
+    if (store?.code) {
+      try {
+        const response =
+          await capGetOnlineJson(
+            '/api/client/' +
+            encodeURIComponent(store.code) +
+            '/state'
+          );
+
+        const state =
+          response?.state ||
+          response?.data ||
+          response ||
+          {};
+
+        wanted =
+          String(
+            state.selectedPlaylistId ||
+            state.selectedPlaylist ||
+            wanted ||
+            ''
+          );
+      } catch {}
     }
 
-  } catch {}
+    if (
+      !capPlaylists.some(
+        playlist =>
+          String(playlist.id) ===
+          String(wanted)
+      )
+    ) {
+      const firstWithMusic =
+        capPlaylists.find(
+          playlist =>
+            capPlaylistIds(playlist).length
+        );
 
-  try {
+      const first =
+        firstWithMusic ||
+        capPlaylists[0];
 
-    if (spokenAudio) {
-      spokenAudio.pause();
+      wanted =
+        first
+          ? String(first.id)
+          : '';
     }
 
-  } catch {}
+    capPlaylistAtual = wanted;
 
-  try {
-
-    if (bedAudio) {
-      bedAudio.pause();
+    if (capPlaylistAtual) {
+      localStorage.setItem(
+        capPlaylistKey(),
+        capPlaylistAtual
+      );
     }
 
-  } catch {}
+    capRenderPlaylists();
 
-  radioAudio = null;
-  spokenAudio = null;
-  bedAudio = null;
-
-  playing = false;
-}
-
-/* =========================================================
-   UI PLAY
-========================================================= */
-
-function syncPlayUi() {
-
-  const button =
-    document.getElementById(
-      'play'
+    capAtualizarStatusRadio();
+  } catch (error) {
+    console.error(
+      'Erro ao carregar playlists:',
+      error
     );
 
-  if (!button) return;
+    const status =
+      document.getElementById('themeStateV11');
 
-  button.textContent =
-    playing
-      ? '⏸ PAUSAR RÁDIO'
-      : '▶ INICIAR RÁDIO';
-
-  button.classList.toggle(
-    'active',
-    playing
-  );
+    if (status) {
+      status.textContent =
+        'Não foi possível carregar as playlists.';
+    }
+  }
 }
 
-/* =========================================================
-   TOCAR MÚSICA
-========================================================= */
+/* =========================
+   TOCAR MÚSICAS ONLINE
+========================= */
 
-async function playNextMusic() {
-
+async function capTocarProximaMusica() {
   if (!playing) return;
 
-  if (pendingPlaylistId) {
+  if (capPlaylistPendente) {
+    capPlaylistAtual =
+      capPlaylistPendente;
 
-    selectedPlaylistId =
-      pendingPlaylistId;
-
-    pendingPlaylistId = '';
+    capPlaylistPendente = '';
 
     radioIndex = 0;
 
-    await savePlaylistChoice(
-      selectedPlaylistId
+    await capSalvarPlaylist(
+      capPlaylistAtual
     );
   }
 
-  const songs =
-    currentPlaylistSongs();
+  const musicas =
+    capMusicasPlaylist();
 
-  if (!songs.length) {
-
+  if (!musicas.length) {
     const title =
-      document.getElementById(
-        'nowTitle'
-      );
+      document.getElementById('nowTitle');
 
-    const subtitle =
-      document.getElementById(
-        'nowSub'
-      );
+    const sub =
+      document.getElementById('nowSub');
 
     if (title) {
-
       title.textContent =
-        playlists.length
+        capPlaylists.length
           ? 'Playlist sem músicas'
           : 'Nenhuma playlist disponível';
     }
 
-    if (subtitle) {
-
-      subtitle.textContent =
-        playlists.length
-          ? 'Escolha uma playlist com músicas.'
-          : 'Crie uma playlist no ADM.';
-    }
-
-    /*
-      Se não houver música mas houver anúncio,
-      não deixa a rádio morta.
-    */
-
-    const activeAds =
-      getActiveAds();
-
-    if (activeAds.length) {
-
-      await playAdBlock();
-
-      if (playing) {
-
-        setTimeout(
-          playNextMusic,
-          1000
-        );
-      }
-
-      return;
+    if (sub) {
+      sub.textContent =
+        capPlaylists.length
+          ? 'Escolha outra playlist.'
+          : 'O ADM precisa criar uma playlist.';
     }
 
     playing = false;
 
-    syncPlayUi();
+    if (typeof syncPlayUi === 'function') {
+      syncPlayUi();
+    }
 
     return;
   }
 
-  if (
-    radioIndex >=
-    songs.length
-  ) {
-
+  if (radioIndex >= musicas.length) {
     radioIndex = 0;
   }
 
-  const media =
-    songs[radioIndex++];
+  const musica =
+    musicas[radioIndex++];
 
   const url =
-    mediaUrl(media);
+    capMediaUrl(musica);
 
   if (!url) {
-
     setTimeout(
-      playNextMusic,
-      700
+      capTocarProximaMusica,
+      500
     );
 
     return;
   }
 
   if (radioAudio) {
-
     try {
       radioAudio.pause();
     } catch {}
+
+    radioAudio.onended = null;
+    radioAudio.onerror = null;
   }
 
-  radioAudio =
-    new Audio(url);
+  radioAudio = new Audio(url);
+
+  const volume =
+    Number(
+      document.getElementById('musicVol')?.value ||
+      75
+    );
 
   radioAudio.volume =
-    musicVolume();
+    Math.max(
+      0,
+      Math.min(1, volume / 100)
+    );
 
   const title =
-    document.getElementById(
-      'nowTitle'
-    );
+    document.getElementById('nowTitle');
 
-  const subtitle =
-    document.getElementById(
-      'nowSub'
-    );
+  const sub =
+    document.getElementById('nowSub');
 
   if (title) {
-
     title.textContent =
-      media.name ||
-      'Música';
+      musica.name || 'Música';
   }
 
-  if (subtitle) {
-
-    subtitle.textContent =
+  if (sub) {
+    sub.textContent =
       '🎵 ' +
       (
-        currentPlaylist()?.name ||
+        capPlaylistAtualObj()?.name ||
         'Playlist'
       );
   }
 
   radioAudio.onended =
     async () => {
-
       if (!playing) return;
 
-      if (pendingPlaylistId) {
+      if (capPlaylistPendente) {
+        capPlaylistAtual =
+          capPlaylistPendente;
 
-        selectedPlaylistId =
-          pendingPlaylistId;
-
-        pendingPlaylistId = '';
+        capPlaylistPendente = '';
 
         radioIndex = 0;
 
-        await savePlaylistChoice(
-          selectedPlaylistId
+        await capSalvarPlaylist(
+          capPlaylistAtual
         );
       }
 
-      await playAdBlock();
-
-      if (playing) {
-
-        playNextMusic();
-      }
+      await capDepoisDaMusica();
     };
 
   radioAudio.onerror =
     () => {
+      if (!playing) return;
 
-      if (playing) {
-
-        setTimeout(
-          playNextMusic,
-          800
-        );
-      }
+      setTimeout(
+        capTocarProximaMusica,
+        700
+      );
     };
 
   try {
-
     await radioAudio.play();
-
   } catch (error) {
-
     console.error(error);
 
     playing = false;
 
-    syncPlayUi();
-
-    alert(
-      'Clique novamente em INICIAR RÁDIO.'
-    );
+    if (typeof syncPlayUi === 'function') {
+      syncPlayUi();
+    }
   }
 }
 
-/* =========================================================
+/* =========================
+   VINHETAS
+========================= */
+
+function capVinhetasAtivas() {
+  const checkbox =
+    document.getElementById('jingles');
+
+  if (!checkbox) {
+    return true;
+  }
+
+  return checkbox.checked === true;
+}
+
+async function capBuscarVinhetas() {
+  try {
+    const response =
+      await capGetOnlineJson('/api/jingles');
+
+    const jingles =
+      capNormalizeOnlineList(
+        response,
+        'jingles'
+      );
+
+    return jingles.filter(item => {
+      if (!item) return false;
+
+      const ramo =
+        String(
+          item.ramo ||
+          item.segment ||
+          item.activity ||
+          ''
+        );
+
+      if (!ramo) return true;
+
+      return (
+        normRamo(ramo) ===
+        normRamo(store?.ramo)
+      );
+    });
+  } catch (error) {
+    console.warn(
+      'Vinhetas indisponíveis:',
+      error
+    );
+
+    return [];
+  }
+}
+
+function capTipoVinheta(item) {
+  return String(
+    item?.type ||
+    item?.tipo ||
+    item?.category ||
+    item?.categoria ||
+    ''
+  )
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function capUrlVinheta(item) {
+  if (!item) return '';
+
+  if (
+    item.url &&
+    /^https?:\/\//i.test(item.url)
+  ) {
+    return item.url;
+  }
+
+  if (item.url) {
+    return (
+      CAP_PLAY_SERVER +
+      (
+        String(item.url).startsWith('/')
+          ? ''
+          : '/'
+      ) +
+      item.url
+    );
+  }
+
+  const mediaId =
+    item.mediaId ||
+    item.media_id ||
+    item.audioId ||
+    item.audio_id ||
+    item.id;
+
+  if (!mediaId) return '';
+
+  return (
+    CAP_PLAY_SERVER +
+    '/api/media/' +
+    encodeURIComponent(mediaId)
+  );
+}
+
+async function capTocarUrl(url) {
+  if (!url || !playing) return;
+
+  await new Promise(resolve => {
+    const audio =
+      new Audio(url);
+
+    spokenAudio = audio;
+
+    audio.volume = 1;
+
+    audio.onended =
+      () => resolve();
+
+    audio.onerror =
+      () => resolve();
+
+    audio.play()
+      .catch(() => resolve());
+  });
+}
+
+async function capTocarVinheta(tipo) {
+  if (!capVinhetasAtivas()) {
+    return;
+  }
+
+  const jingles =
+    await capBuscarVinhetas();
+
+  if (!jingles.length) {
+    return;
+  }
+
+  const wanted =
+    String(tipo)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+
+  let candidates =
+    jingles.filter(item => {
+      const type =
+        capTipoVinheta(item);
+
+      if (wanted === 'entrada') {
+        return (
+          type === 'entrada' ||
+          type === 'opening' ||
+          type === 'inicio' ||
+          type === 'abertura'
+        );
+      }
+
+      if (wanted === 'saida') {
+        return (
+          type === 'saida' ||
+          type === 'closing' ||
+          type === 'fim' ||
+          type === 'fechamento'
+        );
+      }
+
+      if (wanted === 'top entrada') {
+        return (
+          type.includes('top') &&
+          (
+            type.includes('entrada') ||
+            type.includes('inicio') ||
+            type.includes('abertura')
+          )
+        );
+      }
+
+      if (wanted === 'top saida') {
+        return (
+          type.includes('top') &&
+          (
+            type.includes('saida') ||
+            type.includes('fim') ||
+            type.includes('fechamento')
+          )
+        );
+      }
+
+      return false;
+    });
+
+  if (!candidates.length) {
+    return;
+  }
+
+  const item =
+    candidates[
+      Math.floor(
+        Math.random() *
+        candidates.length
+      )
+    ];
+
+  const url =
+    capUrlVinheta(item);
+
+  if (url) {
+    await capTocarUrl(url);
+  }
+}
+
+/* =========================
    BLOCO DE ANÚNCIOS
-========================================================= */
+========================= */
 
-function getActiveAds() {
+function capAnunciosAtivos() {
+  const now = Date.now();
 
-  const now =
-    Date.now();
-
-  return ads.filter(
+  return (ads || []).filter(
     ad =>
+      ad &&
       !ad.paused &&
       (
         !ad.exp ||
@@ -3050,215 +889,331 @@ function getActiveAds() {
   );
 }
 
-function adsPerBlock() {
-
+function capQuantidadeBloco() {
   const field =
     document.getElementById(
       'adsPerBlock'
     );
 
-  const value =
+  let value =
     Number(
       field?.value ||
       localStorage.getItem(
-        capClientKey(
-          'ads_per_block'
-        )
+        'cap_ads_per_block_' +
+        String(store?.code || '')
       ) ||
       3
     );
 
-  return Math.max(
-    1,
-    Math.min(
-      20,
-      value
-    )
-  );
-}
-
-let adCursor = 0;
-
-async function playAdBlock() {
-
-  if (!playing) return;
-
-  const active =
-    getActiveAds();
-
-  if (!active.length) {
-    return;
-  }
-
-  const quantity =
-    Math.min(
-      adsPerBlock(),
-      active.length
-    );
-
-  const block = [];
-
-  for (
-    let i = 0;
-    i < quantity;
-    i++
-  ) {
-
-    if (
-      adCursor >=
-      active.length
-    ) {
-      adCursor = 0;
-    }
-
-    block.push(
-      active[adCursor++]
-    );
-  }
-
-  for (
-    const ad of block
-  ) {
-
-    if (!playing) break;
-
-    await playSingleAd(ad);
-  }
-}
-
-async function playSingleAd(ad) {
-
   if (
-    !ad ||
-    !ad.audioKey
+    !Number.isFinite(value) ||
+    value < 1
   ) {
-    return;
+    value = 1;
   }
+
+  return Math.min(50, value);
+}
+
+async function capTocarAnuncio(ad) {
+  if (!ad || !playing) return;
 
   try {
+    if (
+      ad.url &&
+      /^https?:\/\//i.test(ad.url)
+    ) {
+      await capTocarUrl(ad.url);
 
-    const blob =
-      await getAdBlob(
-        ad.audioKey
-      );
-
-    if (!blob) {
       return;
     }
 
-    const url =
-      URL.createObjectURL(blob);
+    if (
+      ad.mediaId ||
+      ad.media_id
+    ) {
+      const mediaId =
+        ad.mediaId ||
+        ad.media_id;
 
-    await new Promise(
-      resolve => {
+      await capTocarUrl(
+        CAP_PLAY_SERVER +
+        '/api/media/' +
+        encodeURIComponent(mediaId)
+      );
 
-        spokenAudio =
-          new Audio(url);
+      return;
+    }
 
-        spokenAudio.volume = 1;
+    if (
+      ad.audioKey &&
+      typeof capGetAdBlob === 'function'
+    ) {
+      const blob =
+        await capGetAdBlob(ad.audioKey);
 
-        const title =
-          document.getElementById(
-            'nowTitle'
-          );
+      if (!blob) return;
 
-        const subtitle =
-          document.getElementById(
-            'nowSub'
-          );
+      const url =
+        URL.createObjectURL(blob);
 
-        if (title) {
+      await capTocarUrl(url);
 
-          title.textContent =
-            ad.top
-              ? '🔥 TOP DO DIA'
-              : ad.label ||
-                'Anúncio';
-        }
+      URL.revokeObjectURL(url);
 
-        if (subtitle) {
+      return;
+    }
 
-          subtitle.textContent =
-            ad.voice || '';
-        }
+    if (
+      ad.audioKey &&
+      typeof getAdBlob === 'function'
+    ) {
+      const blob =
+        await getAdBlob(ad.audioKey);
 
-        spokenAudio.onended =
-          () => {
+      if (!blob) return;
 
-            URL.revokeObjectURL(
-              url
-            );
+      const url =
+        URL.createObjectURL(blob);
 
-            resolve();
-          };
+      await capTocarUrl(url);
 
-        spokenAudio.onerror =
-          () => {
-
-            URL.revokeObjectURL(
-              url
-            );
-
-            resolve();
-          };
-
-        spokenAudio.play()
-          .catch(() => {
-
-            URL.revokeObjectURL(
-              url
-            );
-
-            resolve();
-          });
-      }
-    );
-
+      URL.revokeObjectURL(url);
+    }
   } catch (error) {
-
     console.warn(
-      'Erro anúncio:',
+      'Erro ao tocar anúncio:',
       error
     );
   }
 }
 
-/* =========================================================
-   BOTÃO RÁDIO
-========================================================= */
+let capAdIndex = 0;
 
-async function toggleRadio() {
+async function capTocarBloco() {
+  if (!playing) return;
 
-  if (!capClientReady) {
+  const active =
+    capAnunciosAtivos();
+
+  if (!active.length) {
     return;
   }
 
-  if (playing) {
+  const qtd =
+    Math.min(
+      capQuantidadeBloco(),
+      active.length
+    );
 
+  const bloco = [];
+
+  for (
+    let i = 0;
+    i < qtd;
+    i++
+  ) {
+    if (
+      capAdIndex >=
+      active.length
+    ) {
+      capAdIndex = 0;
+    }
+
+    bloco.push(
+      active[capAdIndex++]
+    );
+  }
+
+  const temTop =
+    bloco.some(ad => ad.top);
+
+  if (capVinhetasAtivas()) {
+    if (temTop) {
+      await capTocarVinheta(
+        'top entrada'
+      );
+    } else {
+      await capTocarVinheta(
+        'entrada'
+      );
+    }
+  }
+
+  for (const ad of bloco) {
+    if (!playing) break;
+
+    await capTocarAnuncio(ad);
+  }
+
+  if (
+    playing &&
+    capVinhetasAtivas()
+  ) {
+    if (temTop) {
+      await capTocarVinheta(
+        'top saida'
+      );
+    } else {
+      await capTocarVinheta(
+        'saida'
+      );
+    }
+  }
+}
+
+async function capDepoisDaMusica() {
+  if (!playing) return;
+
+  const active =
+    capAnunciosAtivos();
+
+  if (active.length) {
+    await capTocarBloco();
+  }
+
+  if (playing) {
+    await capTocarProximaMusica();
+  }
+}
+
+/* =========================
+   CHECKBOX VINHETAS
+========================= */
+
+function capBindVinhetas() {
+  const checkbox =
+    document.getElementById('jingles');
+
+  if (!checkbox) return;
+
+  const key =
+    'cap_jingles_' +
+    String(store?.code || 'default');
+
+  const saved =
+    localStorage.getItem(key);
+
+  if (saved !== null) {
+    checkbox.checked =
+      saved === '1';
+  }
+
+  checkbox.onchange =
+    () => {
+      localStorage.setItem(
+        key,
+        checkbox.checked
+          ? '1'
+          : '0'
+      );
+    };
+}
+
+/* =========================
+   REMOVE "15 PRODUTOS RÁPIDOS"
+========================= */
+
+function capRemoverTexto15Produtos() {
+  const walker =
+    document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT
+    );
+
+  const nodes = [];
+
+  while (walker.nextNode()) {
+    nodes.push(
+      walker.currentNode
+    );
+  }
+
+  nodes.forEach(node => {
+    const text =
+      String(node.nodeValue || '');
+
+    if (
+      /15\s+produtos\s+r[aá]pidos/i
+        .test(text)
+    ) {
+      node.nodeValue =
+        text.replace(
+          /15\s+produtos\s+r[aá]pidos/ig,
+          'Produtos rápidos'
+        );
+    }
+  });
+}
+
+/* =========================
+   STATUS
+========================= */
+
+function capAtualizarStatusRadio() {
+  const info =
+    document.getElementById(
+      'admSyncInfo'
+    );
+
+  if (!info) return;
+
+  const playlist =
+    capPlaylistAtualObj();
+
+  const qtd =
+    capMusicasPlaylist().length;
+
+  info.innerHTML =
+    '✅ ' +
+    capEscape(store?.ramo || '') +
+    ' • <b>' +
+    capEscape(
+      playlist?.name ||
+      'Sem playlist'
+    ) +
+    '</b> • ' +
+    qtd +
+    ' música' +
+    (qtd === 1 ? '' : 's') +
+    ' online';
+}
+
+/* =========================
+   PLAY / PAUSE
+========================= */
+
+async function capPlayRadioFinal() {
+  if (!capClientReady) return;
+
+  if (playing) {
     playing = false;
 
     if (radioAudio) {
-
       try {
         radioAudio.pause();
       } catch {}
     }
 
     if (spokenAudio) {
-
       try {
         spokenAudio.pause();
       } catch {}
     }
 
-    syncPlayUi();
+    if (
+      typeof syncPlayUi ===
+      'function'
+    ) {
+      syncPlayUi();
+    }
 
     const title =
       document.getElementById(
         'nowTitle'
       );
 
-    const subtitle =
+    const sub =
       document.getElementById(
         'nowSub'
       );
@@ -3268,35 +1223,31 @@ async function toggleRadio() {
         'Rádio pausada';
     }
 
-    if (subtitle) {
-
-      subtitle.textContent =
-        'Inicie quando quiser';
+    if (sub) {
+      sub.textContent =
+        'Escolha uma playlist e inicie quando quiser';
     }
 
     return;
   }
 
-  if (!playlists.length) {
-
-    await loadOnlineRadio();
+  if (!capPlaylists.length) {
+    await capCarregarPlaylists();
   }
 
-  const songs =
-    currentPlaylistSongs();
+  if (!capPlaylistAtual) {
+    alert(
+      'Escolha uma playlist.'
+    );
 
-  const activeAds =
-    getActiveAds();
+    return;
+  }
 
   if (
-    !songs.length &&
-    !activeAds.length
+    !capMusicasPlaylist().length
   ) {
-
     alert(
-      playlists.length
-        ? 'A playlist está sem músicas e não há anúncios ativos.'
-        : 'Nenhuma playlist disponível no ADM.'
+      'Esta playlist está sem músicas.'
     );
 
     return;
@@ -3304,457 +1255,208 @@ async function toggleRadio() {
 
   playing = true;
 
-  syncPlayUi();
-
-  if (songs.length) {
-
-    playNextMusic();
-
-  } else {
-
-    await playAdBlock();
-
-    if (playing) {
-
-      setTimeout(
-        async () => {
-
-          if (!playing) return;
-
-          await playAdBlock();
-
-        },
-        1000
-      );
-    }
+  if (
+    typeof syncPlayUi ===
+    'function'
+  ) {
+    syncPlayUi();
   }
+
+  await capTocarProximaMusica();
 }
 
-/* =========================================================
-   ABAS
-========================================================= */
+/* =========================
+   APLICAR AO CLIENTE
+========================= */
 
-function bindTabs() {
+const capApplyOriginalFinal =
+  typeof applyAdmStore === 'function'
+    ? applyAdmStore
+    : null;
 
-  $$('.tab').forEach(
-    button => {
+if (capApplyOriginalFinal) {
+  applyAdmStore =
+    async function(client) {
+      const result =
+        await capApplyOriginalFinal(
+          client
+        );
 
-      button.onclick =
-        () => {
+      capPlaylistAtual =
+        localStorage.getItem(
+          'cap_playlist_' +
+          String(
+            client?.code ||
+            store?.code ||
+            ''
+          )
+        ) || '';
 
-          $$('.tab')
-            .forEach(
-              item =>
-                item.classList
-                  .remove('active')
-            );
+      capPlaylistPendente = '';
 
-          $$('.page')
-            .forEach(
-              item =>
-                item.classList
-                  .remove('active')
-            );
+      radioIndex = 0;
 
-          button.classList.add(
-            'active'
-          );
+      capBindVinhetas();
 
-          const page =
-            document.getElementById(
-              button.dataset.tab
-            );
+      capRemoverTexto15Produtos();
 
-          if (page) {
+      await capCarregarPlaylists();
 
-            page.classList.add(
-              'active'
-            );
-          }
-        };
-    }
-  );
+      return result;
+    };
+
+  window.applyAdmStore =
+    applyAdmStore;
 }
 
-/* =========================================================
-   EVENTOS
-========================================================= */
+/* =========================
+   SUBSTITUI FUNÇÕES ANTIGAS
+========================= */
 
-function bindEvents() {
+window.chooseThemeV11 =
+  capEscolherPlaylist;
 
-  const loginButton =
-    document.getElementById(
-      'enter'
-    );
+window.renderThemesV11 =
+  capRenderPlaylists;
 
-  if (loginButton) {
+window.updateAdmStatus =
+  capAtualizarStatusRadio;
 
-    loginButton.onclick =
-      loginPlayer;
-  }
+window.playNextAdmMusic =
+  capTocarProximaMusica;
 
-  const code =
-    document.getElementById(
-      'code'
-    );
+window.capRadioAfterMusicV16 =
+  capDepoisDaMusica;
 
-  if (code) {
+try {
+  chooseThemeV11 =
+    capEscolherPlaylist;
+} catch {}
 
-    code.addEventListener(
-      'input',
-      () => {
+try {
+  renderThemesV11 =
+    capRenderPlaylists;
+} catch {}
 
-        code.value =
-          code.value
-            .replace(/\D/g, '')
-            .slice(0, 6);
-      }
-    );
+try {
+  updateAdmStatus =
+    capAtualizarStatusRadio;
+} catch {}
 
-    code.addEventListener(
-      'keydown',
-      event => {
+try {
+  playNextAdmMusic =
+    capTocarProximaMusica;
+} catch {}
 
-        if (
-          event.key === 'Enter'
-        ) {
+try {
+  capRadioAfterMusicV16 =
+    capDepoisDaMusica;
+} catch {}
 
-          event.preventDefault();
+/* =========================
+   INICIALIZAÇÃO
+========================= */
 
-          loginPlayer();
-        }
-      }
-    );
-  }
+function capInicializarCorrecaoFinal() {
+  capRemoverTexto15Produtos();
 
-  const create =
-    document.getElementById(
-      'suggest'
-    );
+  capTrocarTituloPlaylist();
 
-  if (create) {
-
-    create.onclick =
-      createTexts;
-  }
-
-  const top =
-    document.getElementById(
-      'topDay'
-    );
-
-  if (top) {
-
-    top.onclick =
-      toggleTop;
-  }
-
-  const clear =
-    document.getElementById(
-      'clearProduct'
-    );
-
-  if (clear) {
-
-    clear.onclick =
-      () => {
-
-        selectedProduct = '';
-
-        const selected =
-          document.getElementById(
-            'selectedProduct'
-          );
-
-        if (selected) {
-
-          selected.classList.add(
-            'hidden'
-          );
-        }
-
-        const price =
-          document.getElementById(
-            'price'
-          );
-
-        if (price) {
-          price.value = '';
-        }
-
-        $$('#favorites button')
-          .forEach(
-            button =>
-              button.classList
-                .remove('selected')
-          );
-      };
-  }
-
-  const reset =
-    document.getElementById(
-      'resetProducts'
-    );
-
-  if (reset) {
-
-    reset.onclick =
-      () => {
-
-        products =
-          catalogForRamo(
-            store.ramo
-          );
-
-        saveProducts();
-      };
-  }
-
-  const audioButtons = [
-    document.getElementById(
-      'generateAudioV24'
-    ),
-    document.getElementById(
-      'generateAudioV22'
-    ),
-    document.querySelector(
-      '[data-gen="1"]'
-    )
-  ].filter(Boolean);
-
-  audioButtons.forEach(
-    button => {
-
-      button.onclick =
-        generateAndQueue;
-    }
-  );
-
-  const desist =
-    document.getElementById(
-      'desistV25'
-    );
-
-  if (desist) {
-
-    desist.onclick =
-      desistCreation;
-  }
+  capBindVinhetas();
 
   const play =
-    document.getElementById(
-      'play'
-    );
+    document.getElementById('play');
 
   if (play) {
-
     play.onclick =
-      toggleRadio;
+      capPlayRadioFinal;
   }
 
-  const musicVol =
-    document.getElementById(
-      'musicVol'
-    );
-
-  if (musicVol) {
-
-    const saved =
-      localStorage.getItem(
-        'cap_musicVol'
-      );
-
-    if (saved !== null) {
-      musicVol.value = saved;
-    }
-
-    musicVol.addEventListener(
-      'input',
-      () => {
-
-        localStorage.setItem(
-          'cap_musicVol',
-          musicVol.value
-        );
-
-        if (radioAudio) {
-
-          radioAudio.volume =
-            musicVolume();
-        }
-      }
-    );
-  }
-
-  const bedVol =
-    document.getElementById(
-      'bedVol'
-    );
-
-  if (bedVol) {
-
-    const saved =
-      localStorage.getItem(
-        'cap_bedVol'
-      );
-
-    if (saved !== null) {
-      bedVol.value = saved;
-    }
-
-    bedVol.addEventListener(
-      'input',
-      () => {
-
-        localStorage.setItem(
-          'cap_bedVol',
-          bedVol.value
-        );
-
-        if (bedAudio) {
-
-          bedAudio.volume =
-            bedVolume();
-        }
-      }
-    );
-  }
-
-  const adsBlock =
+  const adsPerBlock =
     document.getElementById(
       'adsPerBlock'
     );
 
-  if (adsBlock) {
+  if (adsPerBlock) {
+    const key =
+      'cap_ads_per_block_' +
+      String(store?.code || '');
 
     const saved =
-      localStorage.getItem(
-        capClientKey(
-          'ads_per_block'
-        )
-      );
+      localStorage.getItem(key);
 
     if (saved) {
-      adsBlock.value = saved;
+      adsPerBlock.value = saved;
     }
 
-    adsBlock.addEventListener(
-      'change',
+    adsPerBlock.onchange =
       () => {
+        let value =
+          Number(
+            adsPerBlock.value
+          );
+
+        if (
+          !Number.isFinite(value) ||
+          value < 1
+        ) {
+          value = 1;
+        }
+
+        adsPerBlock.value =
+          value;
 
         localStorage.setItem(
-          capClientKey(
-            'ads_per_block'
-          ),
-          adsBlock.value
+          key,
+          String(value)
         );
 
-        pushClientState();
-      }
-    );
+        if (
+          typeof capPushClientStateV50 ===
+          'function'
+        ) {
+          capPushClientStateV50();
+        }
+      };
   }
 
-  bindPrice();
-
-  bindTabs();
+  if (
+    typeof capClientReady !==
+      'undefined' &&
+    capClientReady
+  ) {
+    capCarregarPlaylists();
+  }
 }
-
-/* =========================================================
-   COMPATIBILIDADE COM NOMES ANTIGOS
-========================================================= */
-
-window.chooseThemeV11 =
-  choosePlaylist;
-
-window.renderThemesV11 =
-  renderPlaylists;
-
-window.updateAdmStatus =
-  updateRadioStatus;
-
-window.playNextAdmMusic =
-  playNextMusic;
-
-window.capLoadOnlinePlaylistsV53 =
-  loadOnlineRadio;
-
-window.capGenerateQueueV24 =
-  generateAndQueue;
-
-window.capGenerateAndQueueV22 =
-  generateAndQueue;
-
-window.createTexts =
-  createTexts;
-
-window.applyAdmStore =
-  applyAdmStore;
-
-/* =========================================================
-   INICIALIZAÇÃO
-========================================================= */
 
 document.addEventListener(
   'DOMContentLoaded',
+  capInicializarCorrecaoFinal
+);
+
+window.addEventListener(
+  'load',
   () => {
+    capInicializarCorrecaoFinal();
 
-    bindEvents();
-
-    syncPlayUi();
-
-    updateCreateUi();
-
-    const login =
-      document.getElementById(
-        'login'
-      );
-
-    const app =
-      document.getElementById(
-        'app'
-      );
-
-    if (login) {
-
-      login.classList.remove(
-        'hidden'
-      );
-    }
-
-    if (app) {
-
-      app.classList.add(
-        'hidden'
-      );
-    }
-
-    const code =
-      document.getElementById(
-        'code'
-      );
-
-    if (code) {
-      code.focus();
-    }
+    setTimeout(
+      capRemoverTexto15Produtos,
+      500
+    );
   }
 );
 
-/* =========================================================
-   ATUALIZAÇÃO ONLINE
-========================================================= */
-
 setInterval(
-  async () => {
+  () => {
+    capRemoverTexto15Produtos();
 
-    if (!capClientReady) {
-      return;
+    if (
+      typeof capClientReady !==
+        'undefined' &&
+      capClientReady
+    ) {
+      capCarregarPlaylists();
     }
-
-    try {
-
-      await loadOnlineRadio();
-
-    } catch {}
   },
   60000
 );
