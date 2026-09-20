@@ -135,13 +135,32 @@ function renderAds(){
  $$('[data-d]').forEach(b=>b.onclick=()=>{ads.splice(b.dataset.d,1);saveAds();renderCreatedAudiosV19()});
 }
 
-$('#enter').onclick=()=>{
- const code=$('#code').value.trim(), list=admClients();
- const c=list.find(x=>String(x.code)===code);
- if(c&&c.active===false){$('#loginMsg').textContent='Rádio bloqueada pelo administrador';return}
- if(c){applyAdmStore(c);$('#login').classList.add('hidden');$('#app').classList.remove('hidden');renderAds();return}
- if(!list.length&&code==='123456'){applyAdmStore({name:'Açougue Uberaba',ramo:'Açougue',code:'123456',active:true});$('#login').classList.add('hidden');$('#app').classList.remove('hidden');renderAds();return}
- $('#loginMsg').textContent='Código não encontrado';
+const CAP_SERVER_V50='https://capivara-radio-server.onrender.com';
+async function capServerClientV50(code){
+ const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),20000);
+ try{
+  const r=await fetch(CAP_SERVER_V50+'/api/client/'+encodeURIComponent(code),{signal:ctrl.signal,headers:{'Accept':'application/json'}});
+  let data=null;try{data=await r.json()}catch(e){}
+  if(r.status===404)return null;
+  if(!r.ok)throw new Error('Servidor '+r.status);
+  const c=data?.client||data?.data||data;
+  if(!c||!(c.code||c.codigo))return null;
+  return {name:c.name||c.nome||c.storeName||'Loja',ramo:c.ramo||c.activity||c.segment||'Açougue',code:String(c.code||c.codigo),active:c.active!==false&&c.ativo!==false};
+ }finally{clearTimeout(timer)}
+}
+$('#enter').onclick=async()=>{
+ const code=$('#code').value.trim(),btn=$('#enter');
+ if(!/^\d{6}$/.test(code)){$('#loginMsg').textContent='Digite o código de 6 dígitos';return}
+ const old=btn.textContent;btn.disabled=true;btn.textContent='CONECTANDO...';$('#loginMsg').textContent='';
+ try{
+  const c=await capServerClientV50(code);
+  if(!c){$('#loginMsg').textContent='Código não encontrado';return}
+  if(c.active===false){$('#loginMsg').textContent='Rádio bloqueada pelo administrador';return}
+  applyAdmStore(c);
+  $('#login').classList.add('hidden');$('#app').classList.remove('hidden');renderAds();renderCreatedAudiosV19();
+ }catch(e){
+  console.error(e);$('#loginMsg').textContent=e.name==='AbortError'?'Servidor demorou para responder. Tente novamente.':'Não foi possível conectar ao servidor';
+ }finally{btn.disabled=false;btn.textContent=old}
 };
 $$('.tab').forEach(b=>b.onclick=()=>{$$('.tab').forEach(x=>x.classList.remove('active'));$$('.page').forEach(x=>x.classList.remove('active'));b.classList.add('active');$('#'+b.dataset.tab).classList.add('active')});
 function promptForGemini(q){const mention=$('#mentionStore').checked, full=$('#fullCurrency').checked, top=createMode==='top';return `você é um redator de rádio comercial brasileiro especialista em ${store.type}. crie uma chamada natural e forte para locução. ${top?'este é o anúncio top do dia: dê mais impacto, urgência e exclusividade, sem exageros enganosos.':''} a chamada deve ter no máximo 150 caracteres. escreva em letras minúsculas. não use emojis. ${mention?`pode mencionar o nome ${store.name}.`:'não mencione o nome do estabelecimento.'} transforme números e preços em palavras para a fala. ${full?'em preços, fale reais e centavos por extenso.':'em preços, não diga as palavras reais ou centavos; exemplo: 4,77 deve virar quatro e setenta e sete.'} informação do cliente: ${q}. responda somente com a frase, sem aspas e sem explicações.`}
@@ -800,3 +819,42 @@ window.addEventListener('DOMContentLoaded',()=>{
    update();
  });
 })();
+
+// V50 — estado individual do cliente também sincronizado com o servidor central.
+async function capPullClientStateV50(){
+ if(!capClientReady||!store.code)return;
+ try{
+  const r=await fetch(CAP_SERVER_V50+'/api/client/'+encodeURIComponent(store.code)+'/state',{headers:{'Accept':'application/json'}});
+  if(!r.ok)return;
+  const j=await r.json(),s=j?.state||j?.data||j||{};
+  if(Array.isArray(s.ads)){
+   // Só aceita metadados pertencentes ao cliente logado. Áudio local continua isolado pelo audioKey com código.
+   ads=s.ads.filter(a=>!a.clientCode||String(a.clientCode)===String(store.code));
+   localStorage.setItem(capClientKey('cap_ads'),JSON.stringify(ads));
+  }
+  if(Number.isFinite(+s.voiceTurn)){voiceTurn=+s.voiceTurn;localStorage.setItem(capClientKey('cap_voice'),String(voiceTurn))}
+  if(s.adsPerBlock) localStorage.setItem('cap_ads_per_block_'+store.code,String(s.adsPerBlock));
+  renderAds();renderCreatedAudiosV19();
+ }catch(e){console.warn('Estado central indisponível; usando cache individual local.',e)}
+}
+async function capPushClientStateV50(){
+ if(!capClientReady||!store.code)return;
+ try{
+  const safeAds=ads.map(a=>({...a,clientCode:String(store.code)}));
+  await fetch(CAP_SERVER_V50+'/api/client/'+encodeURIComponent(store.code)+'/state',{
+   method:'PUT',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({ads:safeAds,voiceTurn,adsPerBlock:+(document.getElementById('adsPerBlock')?.value||3),updatedAt:new Date().toISOString()})
+  });
+ }catch(e){console.warn('Não foi possível sincronizar o estado agora.',e)}
+}
+const capOldApplyAdmStoreV50=applyAdmStore;
+applyAdmStore=function(c){
+ capOldApplyAdmStoreV50(c);
+ setTimeout(capPullClientStateV50,0);
+};
+const capOldSaveAdsV50=saveAds;
+saveAds=function(){
+ capOldSaveAdsV50();
+ capPushClientStateV50();
+};
+
