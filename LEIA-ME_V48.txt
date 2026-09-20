@@ -1,0 +1,5 @@
+V48
+Corrige o erro "Gerador de áudio não encontrado" da V47.
+O botão do texto digitado agora chama o fluxo REAL já existente no Player:
+capGenerateQueueV24(1), com fallbacks para as funções internas anteriores.
+Mantém isolamento individual de clientes da V46.

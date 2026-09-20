@@ -1,0 +1,27 @@
+CAPIVARA RÁDIO — PLAYER V46
+Base: V40 oficial.
+
+REGRA IMPLEMENTADA:
+Cada código de cliente é uma rádio independente.
+
+Para cada cliente ficam separados:
+- cadastro/lista de anúncios;
+- arquivos MP3 gerados no IndexedDB (chave física inclui o código do cliente);
+- fila usada pelo motor da rádio;
+- pausa/exclusão/validade;
+- contador diário e semanal;
+- alternância de voz.
+
+Cliente novo:
+- nasce sem anúncios;
+- nasce sem áudios criados;
+- não herda nada de outro cliente.
+
+Persistência:
+- gerou e mandou para programação -> metadados são salvos em cap_ads__<CODIGO>;
+- áudio físico é salvo como cliente:<CODIGO>:audio:<ID>;
+- fechou/reabriu -> ao entrar com o MESMO código, carrega os dados daquele código;
+- entrou com OUTRO código -> carrega somente os dados desse outro cliente.
+
+Não existe fallback para cap_ads global/legado no motor da rádio.
+Acervo musical, vinhetas e fundos continuam gerais do sistema, conforme projeto.

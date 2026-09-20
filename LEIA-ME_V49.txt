@@ -1,0 +1,8 @@
+PLAYER V49 — IDs POR FUNÇÃO
+Base: V48/V46/V40.
+- anúncio gerado pela IA -> IDs de anúncio do ADM;
+- texto digitado -> IDs de anúncio do ADM;
+- TOP -> IDs de anúncio do ADM;
+- vinhetas permanecem no par exclusivo de vinhetas;
+- alternância homem/mulher preservada;
+- isolamento e persistência por cliente preservados.

@@ -1,0 +1,1 @@
+PLAYER V40 — Base V39. Única alteração: volume padrão do fundo das locuções = 6%. Volume em tempo real preservado.

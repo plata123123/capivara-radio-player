@@ -1,0 +1,41 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Capivara Rádio</title><link rel="stylesheet" href="style.css"><style>
+.sync-info{padding:11px 14px;margin-bottom:16px;border-radius:12px;background:#eef8f1;color:#176b37;font-size:13px}
+.theme-title-v11{font-weight:800;margin:6px 0 10px}.theme-buttons-v11{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px}.theme-buttons-v11 button{padding:11px 8px;border-radius:11px;border:1px solid #d7e3db;background:white;font-weight:700;cursor:pointer}.theme-buttons-v11 button.active{background:#176b37;color:white;border-color:#176b37}.theme-buttons-v11 button.pending{outline:2px solid #e2a900}.theme-state-v11{font-size:12px;color:#607068;margin-bottom:14px}@media(max-width:560px){.theme-buttons-v11{grid-template-columns:1fr 1fr}}
+@keyframes capGuidePulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(255,255,255,.0)}50%{transform:scale(1.025);box-shadow:0 0 0 7px rgba(255,255,255,.10)}}
+.cap-guide{animation:capGuidePulse 1.15s ease-in-out infinite}
+.cap-locked{opacity:.45;pointer-events:none;filter:grayscale(.25)}
+.queue-v27-hidden{display:none!important}
+</style></head><body>
+<div id="login" class="center"><div class="card login"><h1>CAPIVARA</h1><p>Rádio para sua loja</p><input id="code" maxlength="6" inputmode="numeric" placeholder="Código de 6 dígitos"><button id="enter">ENTRAR NA RÁDIO</button><small id="loginMsg"></small></div></div>
+<div id="app" class="hidden"><header><div><b>CAPIVARA</b><span id="storeName">Açougue Uberaba</span></div><div id="onair">● PAUSADA</div></header>
+<nav><button class="tab active" data-tab="create">📢<span>Criar anúncio</span></button><button class="tab" data-tab="radio">▶<span>Rádio</span></button><button class="tab" data-tab="settings">⚙<span>Ajustes</span></button></nav>
+<main>
+<section id="create" class="page active"><div class="create-layout-v19"><div class="create-main-v19"><div class="hero"><h2>O que você quer anunciar?</h2>
+<div class="quick-products"><div id="favorites" class="favorite-grid"></div><div id="selectedProduct" class="selected-product hidden"><b id="selectedName"></b><input id="price" inputmode="numeric" autocomplete="off" placeholder="Preço opcional"><button id="clearProduct" type="button">×</button></div></div>
+<textarea id="brief" placeholder="Ou escreva o que quer anunciar"></textarea>
+<div id="manualAudioWrapV47" style="display:none;margin-top:12px">
+<button id="manualAudioBtnV47" type="button" class="primary" style="width:100%;padding:16px;font-size:16px">🔊 CLIQUE AQUI APÓS CONCLUIR O TEXTO</button>
+</div><button type="button" id="generateAudioV24" class="primary v24-audio">🔊 GERAR ÁUDIO</button><button type="button" id="desistV25" class="desist-v25">✕ DESISTIR</button><div class="create-choice"><button id="suggest" class="create-main">✨ CRIAR ANÚNCIO</button><button id="topDay" class="top-main">🔥 TOP DO DIA</button></div><div id="topStatus" class="top-status hidden">🔥 Criando o TOP do dia</div><select id="duration" class="duration-mini"><option value="1">Hoje</option><option value="7">7 dias</option><option value="30">30 dias</option><option value="0">Sempre</option></select></div><div id="suggestions" class="hidden"><div class="suggest-grid"><div class="suggest"><textarea id="text1" maxlength="150"></textarea><button data-gen="1">🎙 GERAR ÁUDIO</button><div class="audio-actions hidden" id="actions1"><button data-preview="1" class="secondary">🔊 PRÉVIA</button><button data-queue="1">➕ MANDAR PRA FILA</button><button class="btn secondary" class="discardGeneratedBtn" onclick="discardGeneratedAd()">🗑 DESCARTAR</button></div><audio id="audio1" preload="none"></audio></div><div class="suggest"><textarea id="text2" maxlength="150"></textarea><button data-gen="2">🎙 GERAR ÁUDIO</button><div class="audio-actions hidden" id="actions2"><button data-preview="2" class="secondary">🔊 PRÉVIA</button><button data-queue="2">➕ MANDAR PRA FILA</button><button class="btn secondary" class="discardGeneratedBtn" onclick="discardGeneratedAd()">🗑 DESCARTAR</button></div><audio id="audio2" preload="none"></audio></div></div></div><div class="queue queue-v27-hidden" aria-hidden="true"><b id="dailyCount">0</b><div id="ads"></div></div></div><aside class="created-panel-v19"><h3>Áudios criados</h3><div id="createdAudiosV19"></div></aside></div></section>
+<section id="radio" class="page"><div class="radio-card"><div id="admSyncInfo" class="sync-info">Acervo musical da Capivara</div>
+<div class="theme-title-v11">🎵 ESCOLHA O TEMA DA RÁDIO</div>
+<div id="themeButtonsV11" class="theme-buttons-v11"></div>
+<div id="themeStateV11" class="theme-state-v11"></div><div class="disc">♪</div><h2 id="nowTitle">Rádio pronta</h2><p id="nowSub">Música → vinheta → anúncios → vinheta → música</p><button class="play" id="play">▶ INICIAR RÁDIO</button><div class="levels" style="grid-template-columns:1fr"><label style="font-weight:800">📢 ANÚNCIOS POR BLOCO
+<input id="adsPerBlock" type="number" min="1" step="1" value="3" inputmode="numeric" style="display:block;width:100%;margin-top:10px;padding:15px;border:1px solid #dce4de;border-radius:14px;text-align:center;font-size:22px;font-weight:900">
+<small style="display:block;margin-top:7px;font-weight:400">Digite qualquer quantidade.</small><div style="margin-top:8px;font-size:13px;color:#667085"><b>Sugestão:</b> Suave — 2 &nbsp;•&nbsp; Equilibrado — 3 &nbsp;•&nbsp; Intenso — 5</div></label></div><div class="cycle" id="cycle"></div></div></section>
+<section id="settings" class="page"><div class="settings"><h2>Ajustes</h2>
+<label>Mencionar nome da loja <span><input id="mentionStore" type="checkbox"><button class="reset" data-reset="mentionStore">↺ Padrão</button></span></label>
+<label>Falar moeda completa <span><input id="fullCurrency" type="checkbox"><button class="reset" data-reset="fullCurrency">↺ Padrão</button></span></label>
+<label>Volume da música <span><input id="musicVol" type="range" min="0" max="100" value="75"><button class="reset" data-reset="musicVol">↺ Padrão</button></span></label>
+<label>Volume do fundo das locuções <span><input id="bedVol" type="range" min="0" max="100" value="18"><button class="reset" data-reset="bedVol">↺ Padrão</button></span></label>
+<label>Vinhetas dos blocos <span><input id="jingles" type="checkbox" checked><button class="reset" data-reset="jingles">↺ Padrão</button></span></label>
+<label>Funcionamento <span><input id="open" type="time" value="08:00"><input id="close" type="time" value="20:00"></span></label>
+<div class="catalog-settings"><h3>15 produtos rápidos</h3><div id="productEditor"></div><button id="resetProducts" class="secondary" type="button">↺ RESTAURAR 15 PADRÕES</button></div>
+<button id="restore">RESTAURAR TUDO</button></div></section>
+</main></div>
+<script src="app.js"></script></body></html>
+
+<style>
+/* V15: uma única sugestão por vez */
+#suggestions > :nth-child(n+2), .suggestions > :nth-child(n+2),
+.results > :nth-child(n+2), .options > :nth-child(n+2){display:none!important}
+</style>
