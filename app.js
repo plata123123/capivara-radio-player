@@ -1,1472 +1,1280 @@
-// CAPIVARA RÁDIO PLAYER
-// V51 — PLAYLISTS ONLINE + ESCOLHA SALVA POR CLIENTE
-//
-// COLE ESTE BLOCO NO FINAL DO app.js ATUAL.
-// Esta versão mantém o Player existente e liga o acervo/playlists
-// online do ADM ao cliente.
-
-const CAP_PLAYLIST_SERVER_V51 =
-  'https://capivara-radio-server.onrender.com';
-
-let capOnlinePlaylistsV51 = {};
-let capOnlineMediaV51 = [];
-let capCurrentPlaylistV51 = '';
-let capOnlineMusicIndexV51 = 0;
-let capOnlineRadioBusyV51 = false;
-
 /* =========================================================
-   CHAVES INDIVIDUAIS DO CLIENTE
+   CAPIVARA RÁDIO PLAYER — V52
+   PLAYLISTS ONLINE DO ADM
+   SOMENTE PLAYER
+   COLE NO FINAL DO app.js
 ========================================================= */
 
-function capPlaylistClientCodeV51(){
-  try{
-    return String(store?.code || '').trim();
-  }catch{
-    return '';
-  }
+(function(){
+
+const CAP_V52_SERVER =
+ 'https://capivara-radio-server.onrender.com';
+
+let capPlaylistsV52 = [];
+let capMediaV52 = [];
+let capSelectedPlaylistV52 = '';
+let capPendingPlaylistV52 = '';
+let capPlaylistIndexV52 = 0;
+let capLoadingV52 = false;
+
+/* =========================================================
+   CLIENTE
+========================================================= */
+
+function capCodeV52(){
+ try{
+  return String(store?.code || '').trim();
+ }catch(e){
+  return '';
+ }
 }
 
-function capPlaylistStorageKeyV51(){
-  const code = capPlaylistClientCodeV51();
-
-  return 'cap_online_playlist_v51_' + (code || 'sem_cliente');
-}
-
-function capGetSavedPlaylistV51(){
-  return String(
-    localStorage.getItem(capPlaylistStorageKeyV51()) || ''
-  ).trim();
-}
-
-function capSavePlaylistLocalV51(id){
-  capCurrentPlaylistV51 = String(id || '');
-
-  localStorage.setItem(
-    capPlaylistStorageKeyV51(),
-    capCurrentPlaylistV51
-  );
+function capPlaylistKeyV52(){
+ return 'capivara_playlist_' + capCodeV52();
 }
 
 /* =========================================================
    API
 ========================================================= */
 
-async function capFetchJsonV51(path, options = {}){
-  const response = await fetch(
-    CAP_PLAYLIST_SERVER_V51 + path,
-    {
-      ...options,
-      headers:{
-        Accept:'application/json',
-        ...(options.headers || {})
-      }
-    }
-  );
-
-  let data = {};
-
-  try{
-    data = await response.json();
-  }catch{}
-
-  if(!response.ok){
-    throw new Error(
-      data?.error ||
-      data?.message ||
-      'Erro HTTP ' + response.status
-    );
+async function capApiV52(path,opt={}){
+ const r = await fetch(
+  CAP_V52_SERVER + path,
+  {
+   ...opt,
+   headers:{
+    Accept:'application/json',
+    ...(opt.headers || {})
+   }
   }
+ );
 
-  return data;
+ let j = {};
+
+ try{
+  j = await r.json();
+ }catch(e){}
+
+ if(!r.ok){
+  throw new Error(
+   j?.error ||
+   j?.message ||
+   ('Erro ' + r.status)
+  );
+ }
+
+ return j;
 }
 
 /* =========================================================
-   CARREGAR PLAYLISTS E ACERVO ONLINE
+   NORMALIZAÇÃO
 ========================================================= */
 
-async function capLoadOnlinePlaylistsV51(){
-  try{
-    const [playlistData, mediaData] = await Promise.all([
-      capFetchJsonV51('/api/playlists'),
-      capFetchJsonV51('/api/media?kind=music')
-    ]);
+function capNormalizePlaylistsV52(j){
 
-    let rawPlaylists = playlistData?.playlists || {};
+ const raw =
+  j?.playlists ??
+  j?.data ??
+  j ??
+  [];
 
-    if(Array.isArray(rawPlaylists)){
-      const converted = {};
+ if(Array.isArray(raw)){
+  return raw;
+ }
 
-      rawPlaylists.forEach(p=>{
-        if(p?.id){
-          converted[p.id] = p;
-        }
-      });
+ if(
+  raw &&
+  typeof raw === 'object'
+ ){
+  return Object.entries(raw).map(
+   ([id,p])=>({
+    id,
+    ...(p || {})
+   })
+  );
+ }
 
-      rawPlaylists = converted;
-    }
+ return [];
+}
 
-    capOnlinePlaylistsV51 = rawPlaylists || {};
+function capNormalizeMediaV52(j){
 
-    capOnlineMediaV51 = Array.isArray(mediaData?.media)
-      ? mediaData.media.filter(x=>x?.kind === 'music')
-      : [];
+ const raw =
+  j?.media ??
+  j?.data ??
+  j ??
+  [];
 
-    let saved = capGetSavedPlaylistV51();
+ if(!Array.isArray(raw)){
+  return [];
+ }
 
-    if(
-      saved &&
-      (
-        !capOnlinePlaylistsV51[saved] ||
-        capOnlinePlaylistsV51[saved]?.active === false
-      )
-    ){
-      saved = '';
-    }
-
-    if(!saved){
-      const first = Object.values(capOnlinePlaylistsV51)
-        .find(p=>
-          p &&
-          p.active !== false &&
-          Array.isArray(p.musicIds) &&
-          p.musicIds.length
-        );
-
-      if(first?.id){
-        saved = first.id;
-        capSavePlaylistLocalV51(saved);
-      }
-    }
-
-    capCurrentPlaylistV51 = saved;
-
-    capRenderPlaylistSelectorV51();
-
-    return true;
-
-  }catch(error){
-    console.warn(
-      'Playlists online indisponíveis.',
-      error
-    );
-
-    capRenderPlaylistSelectorV51();
-
-    return false;
-  }
+ return raw;
 }
 
 /* =========================================================
-   MÚSICAS DA PLAYLIST ESCOLHIDA
+   PLAYLIST ATUAL
 ========================================================= */
 
-function capSelectedPlaylistV51(){
-  return capOnlinePlaylistsV51[
-    capCurrentPlaylistV51
-  ] || null;
+function capPlaylistAtualV52(){
+
+ return capPlaylistsV52.find(
+  p=>
+   String(p.id) ===
+   String(capSelectedPlaylistV52)
+ ) || null;
 }
 
-function capPlaylistMusicsV51(){
-  const playlist = capSelectedPlaylistV51();
+function capMusicasPlaylistV52(){
 
-  if(
-    !playlist ||
-    playlist.active === false ||
-    !Array.isArray(playlist.musicIds)
-  ){
-    return [];
-  }
+ const playlist =
+  capPlaylistAtualV52();
 
-  const mediaMap = new Map(
-    capOnlineMediaV51.map(m=>[
-      String(m.id),
-      m
-    ])
+ if(
+  !playlist ||
+  !Array.isArray(playlist.musicIds)
+ ){
+  return [];
+ }
+
+ const mapa =
+  new Map(
+   capMediaV52.map(
+    m=>[
+     String(m.id),
+     m
+    ]
+   )
   );
 
-  return playlist.musicIds
-    .map(id=>mediaMap.get(String(id)))
-    .filter(Boolean);
+ return playlist.musicIds
+  .map(
+   id=>mapa.get(String(id))
+  )
+  .filter(Boolean);
 }
 
-function capMediaUrlV51(media){
-  if(!media)return '';
+/* =========================================================
+   URL DA MÚSICA
+========================================================= */
 
-  if(
-    media.url &&
-    /^https?:\/\//i.test(media.url)
-  ){
-    return media.url;
-  }
+function capMediaUrlV52(meta){
 
-  if(media.url){
-    return (
-      CAP_PLAYLIST_SERVER_V51 +
-      (
-        String(media.url).startsWith('/')
-          ? media.url
-          : '/' + media.url
-      )
-    );
-  }
-
-  if(media.id){
-    return (
-      CAP_PLAYLIST_SERVER_V51 +
-      '/api/media/' +
-      encodeURIComponent(media.id)
-    );
-  }
-
+ if(!meta){
   return '';
+ }
+
+ if(
+  meta.url &&
+  /^https?:\/\//i.test(meta.url)
+ ){
+  return meta.url;
+ }
+
+ if(meta.url){
+  return (
+   CAP_V52_SERVER +
+   (
+    String(meta.url)
+     .startsWith('/')
+     ? ''
+     : '/'
+   ) +
+   meta.url
+  );
+ }
+
+ if(meta.id){
+  return (
+   CAP_V52_SERVER +
+   '/api/media/' +
+   encodeURIComponent(meta.id)
+  );
+ }
+
+ return '';
 }
 
 /* =========================================================
-   SALVAR PLAYLIST ESCOLHIDA NO ESTADO CENTRAL DO CLIENTE
+   CARREGAR PLAYLISTS + MÚSICAS
 ========================================================= */
 
-async function capSavePlaylistServerV51(id){
-  const code = capPlaylistClientCodeV51();
+async function capCarregarRadioOnlineV52(){
 
-  if(!code)return;
+ if(capLoadingV52){
+  return;
+ }
 
-  try{
-    let currentState = {};
+ capLoadingV52 = true;
 
-    try{
-      const current = await capFetchJsonV51(
-        '/api/client/' +
-        encodeURIComponent(code) +
-        '/state'
-      );
+ try{
 
-      currentState =
-        current?.state ||
-        current?.data ||
-        {};
-    }catch{}
+  const [p,m] =
+   await Promise.all([
+    capApiV52('/api/playlists'),
+    capApiV52('/api/media')
+   ]);
 
-    await capFetchJsonV51(
-      '/api/client/' +
-      encodeURIComponent(code) +
-      '/state',
-      {
-        method:'PUT',
+  capPlaylistsV52 =
+   capNormalizePlaylistsV52(p)
+   .filter(
+    x=>
+     x &&
+     x.active !== false
+   );
 
-        headers:{
-          'Content-Type':'application/json'
-        },
+  capMediaV52 =
+   capNormalizeMediaV52(m)
+   .filter(
+    x=>
+     x &&
+     String(
+      x.kind || 'music'
+     ).toLowerCase() === 'music'
+   );
 
-        body:JSON.stringify({
-          ...currentState,
+  let saved =
+   localStorage.getItem(
+    capPlaylistKeyV52()
+   ) || '';
 
-          selectedPlaylist:id,
+  /* ESTADO CENTRAL DO CLIENTE */
 
-          updatedAt:
-            new Date().toISOString()
-        })
-      }
-    );
+  const code =
+   capCodeV52();
 
-  }catch(error){
-    console.warn(
-      'Não foi possível salvar a playlist no servidor.',
-      error
-    );
-  }
-}
+  if(code){
 
-async function capLoadPlaylistFromClientStateV51(){
-  const code = capPlaylistClientCodeV51();
+   try{
 
-  if(!code)return;
-
-  try{
-    const response = await capFetchJsonV51(
+    const stateResponse =
+     await capApiV52(
       '/api/client/' +
       encodeURIComponent(code) +
       '/state'
-    );
+     );
 
     const state =
-      response?.state ||
-      response?.data ||
-      {};
-
-    const id =
-      String(state.selectedPlaylist || '');
+     stateResponse?.state ||
+     stateResponse?.data ||
+     stateResponse ||
+     {};
 
     if(
-      id &&
-      capOnlinePlaylistsV51[id] &&
-      capOnlinePlaylistsV51[id].active !== false
+     state.selectedPlaylistId ||
+     state.selectedPlaylist
     ){
-      capSavePlaylistLocalV51(id);
+     saved =
+      String(
+       state.selectedPlaylistId ||
+       state.selectedPlaylist
+      );
     }
 
-  }catch(error){
-    console.warn(
-      'Usando playlist salva neste aparelho.',
-      error
-    );
+   }catch(e){}
   }
-}
 
-/* =========================================================
-   TROCAR PLAYLIST
-========================================================= */
-
-async function capSelectPlaylistV51(id){
-  id = String(id || '');
+  /* CONFERE SE A PLAYLIST EXISTE */
 
   if(
-    !id ||
-    !capOnlinePlaylistsV51[id]
+   !capPlaylistsV52.some(
+    p=>
+     String(p.id) ===
+     String(saved)
+   )
   ){
-    return;
-  }
 
-  capSavePlaylistLocalV51(id);
-
-  capOnlineMusicIndexV51 = 0;
-
-  await capSavePlaylistServerV51(id);
-
-  capRenderPlaylistSelectorV51();
-
-  if(
-    typeof radioOn !== 'undefined' &&
-    radioOn
-  ){
-    try{
-      if(radioAudio){
-        radioAudio.pause();
-        radioAudio.src = '';
-      }
-    }catch{}
-
-    setTimeout(()=>{
-      capPlayNextOnlineMusicV51()
-        .catch(console.error);
-    },150);
-  }
-}
-
-/* =========================================================
-   INTERFACE DA PLAYLIST
-========================================================= */
-
-function capFindRadioSectionV51(){
-  return (
-    document.getElementById('radioPanel') ||
-    document.getElementById('radio') ||
-    document.querySelector('.radio-card') ||
-    document.querySelector('[data-radio]') ||
-    document.querySelector('#radioSection') ||
-    document.querySelector('main') ||
-    document.body
-  );
-}
-
-function capEnsurePlaylistUIV51(){
-  if(document.getElementById('capPlaylistBoxV51')){
-    return;
-  }
-
-  const target = capFindRadioSectionV51();
-
-  if(!target)return;
-
-  const box = document.createElement('div');
-
-  box.id = 'capPlaylistBoxV51';
-
-  box.innerHTML = `
-    <style>
-      #capPlaylistBoxV51{
-        margin:14px 0;
-        padding:14px;
-        border:1px solid rgba(255,255,255,.12);
-        border-radius:14px;
-        background:rgba(255,255,255,.04);
-      }
-
-      #capPlaylistBoxV51 .cap-title-v51{
-        font-weight:900;
-        margin-bottom:8px;
-      }
-
-      #capPlaylistSelectV51{
-        width:100%;
-        min-height:48px;
-        border-radius:11px;
-        padding:0 12px;
-        font:700 15px system-ui;
-      }
-
-      #capPlaylistInfoV51{
-        margin-top:8px;
-        font:700 12px system-ui;
-        opacity:.72;
-      }
-    </style>
-
-    <div class="cap-title-v51">
-      🎵 Playlist da rádio
-    </div>
-
-    <select id="capPlaylistSelectV51">
-      <option value="">
-        Carregando playlists...
-      </option>
-    </select>
-
-    <div id="capPlaylistInfoV51"></div>
-  `;
-
-  const firstChild = target.firstElementChild;
-
-  if(firstChild){
-    target.insertBefore(
-      box,
-      firstChild
-    );
-  }else{
-    target.appendChild(box);
-  }
-
-  const select =
-    document.getElementById(
-      'capPlaylistSelectV51'
-    );
-
-  if(select){
-    select.addEventListener(
-      'change',
-      ()=>{
-        capSelectPlaylistV51(
-          select.value
-        );
-      }
-    );
-  }
-}
-
-function capRenderPlaylistSelectorV51(){
-  capEnsurePlaylistUIV51();
-
-  const select =
-    document.getElementById(
-      'capPlaylistSelectV51'
-    );
-
-  const info =
-    document.getElementById(
-      'capPlaylistInfoV51'
-    );
-
-  if(!select)return;
-
-  const list =
-    Object.values(
-      capOnlinePlaylistsV51 || {}
-    )
-    .filter(p=>
-      p &&
-      p.active !== false &&
+   const first =
+    capPlaylistsV52.find(
+     p=>
       Array.isArray(p.musicIds) &&
       p.musicIds.length
+    ) ||
+    capPlaylistsV52[0];
+
+   saved =
+    first
+     ? String(first.id)
+     : '';
+  }
+
+  capSelectedPlaylistV52 =
+   saved;
+
+  if(saved){
+   localStorage.setItem(
+    capPlaylistKeyV52(),
+    saved
+   );
+  }
+
+  capRenderPlaylistV52();
+
+ }catch(e){
+
+  console.error(
+   'Erro ao carregar playlists online:',
+   e
+  );
+
+  capRenderErroV52();
+
+ }finally{
+
+  capLoadingV52 = false;
+ }
+}
+
+/* =========================================================
+   SALVAR ESCOLHA
+========================================================= */
+
+async function capSalvarPlaylistV52(id){
+
+ id =
+  String(id || '');
+
+ if(!id){
+  return;
+ }
+
+ capSelectedPlaylistV52 =
+  id;
+
+ capPlaylistIndexV52 =
+  0;
+
+ localStorage.setItem(
+  capPlaylistKeyV52(),
+  id
+ );
+
+ capRenderPlaylistV52();
+
+ const code =
+  capCodeV52();
+
+ if(!code){
+  return;
+ }
+
+ try{
+
+  let oldState = {};
+
+  try{
+
+   const old =
+    await capApiV52(
+     '/api/client/' +
+     encodeURIComponent(code) +
+     '/state'
     );
 
-  if(!list.length){
-    select.innerHTML = `
-      <option value="">
-        Nenhuma playlist disponível
-      </option>
+   oldState =
+    old?.state ||
+    old?.data ||
+    old ||
+    {};
+
+  }catch(e){}
+
+  await capApiV52(
+   '/api/client/' +
+   encodeURIComponent(code) +
+   '/state',
+   {
+    method:'PUT',
+
+    headers:{
+     'Content-Type':
+      'application/json'
+    },
+
+    body:JSON.stringify({
+     ...oldState,
+
+     selectedPlaylistId:
+      id,
+
+     selectedPlaylist:
+      id,
+
+     updatedAt:
+      new Date()
+       .toISOString()
+    })
+   }
+  );
+
+ }catch(e){
+
+  console.warn(
+   'Playlist salva localmente.',
+   e
+  );
+ }
+}
+
+/* =========================================================
+   TROCA DE PLAYLIST
+========================================================= */
+
+async function capEscolherPlaylistV52(id){
+
+ id =
+  String(id || '');
+
+ if(!id){
+  return;
+ }
+
+ if(
+  typeof playing !==
+   'undefined' &&
+  playing &&
+  radioAudio &&
+  !radioAudio.paused
+ ){
+  capPendingPlaylistV52 =
+   id;
+
+  capRenderPlaylistV52();
+
+  return;
+ }
+
+ await capSalvarPlaylistV52(id);
+}
+
+window.capEscolherPlaylistV52 =
+ capEscolherPlaylistV52;
+
+/* =========================================================
+   LOCALIZAR ÁREA ANTIGA DOS TEMAS
+========================================================= */
+
+function capThemeButtonsV52(){
+
+ return document.getElementById(
+  'themeButtonsV11'
+ );
+}
+
+function capThemeStateV52(){
+
+ return document.getElementById(
+  'themeStateV11'
+ );
+}
+
+function capTrocarTituloTemaV52(){
+
+ const els =
+  [
+   ...document.querySelectorAll(
+    'h1,h2,h3,h4,strong,b,div'
+   )
+  ];
+
+ for(const el of els){
+
+  const t =
+   String(
+    el.textContent || ''
+   ).trim();
+
+  if(
+   /^escolha o tema da rádio$/i
+    .test(t)
+  ){
+   el.textContent =
+    'ESCOLHA A PLAYLIST DA RÁDIO';
+
+   break;
+  }
+ }
+}
+
+/* =========================================================
+   RENDER
+========================================================= */
+
+function capEscapeV52(v){
+
+ return String(v || '')
+  .replace(/&/g,'&amp;')
+  .replace(/</g,'&lt;')
+  .replace(/>/g,'&gt;')
+  .replace(/"/g,'&quot;');
+}
+
+function capRenderPlaylistV52(){
+
+ capTrocarTituloTemaV52();
+
+ const box =
+  capThemeButtonsV52();
+
+ const state =
+  capThemeStateV52();
+
+ if(!box){
+  return;
+ }
+
+ if(!capPlaylistsV52.length){
+
+  box.innerHTML = `
+   <div style="
+    width:100%;
+    padding:15px;
+    text-align:center;
+    font-weight:800;
+   ">
+    Nenhuma playlist disponível.
+   </div>
+  `;
+
+  if(state){
+   state.textContent =
+    'O administrador precisa criar uma playlist.';
+  }
+
+  capAtualizarStatusV52();
+
+  return;
+ }
+
+ box.innerHTML =
+  capPlaylistsV52
+   .map(p=>{
+
+    const active =
+     String(p.id) ===
+     String(capSelectedPlaylistV52);
+
+    const pending =
+     String(p.id) ===
+     String(capPendingPlaylistV52);
+
+    return `
+     <button
+      type="button"
+      class="
+       ${active ? 'active' : ''}
+       ${pending ? 'pending' : ''}
+      "
+      onclick="
+       capEscolherPlaylistV52(
+        '${String(p.id)
+          .replace(/'/g,"\\'")}'
+       )
+      "
+     >
+      ${capEscapeV52(
+       p.name || 'Playlist'
+      )}
+     </button>
     `;
+   })
+   .join('');
 
-    select.disabled = true;
+ if(state){
 
-    if(info){
-      info.textContent =
-        'Adicione músicas e crie uma playlist no ADM.';
-    }
+  if(capPendingPlaylistV52){
 
-    return;
-  }
-
-  select.disabled = false;
-
-  select.innerHTML =
-    list.map(p=>`
-      <option
-        value="${capEscapeV51(p.id)}"
-        ${
-          String(p.id) ===
-          String(capCurrentPlaylistV51)
-            ? 'selected'
-            : ''
-        }
-      >
-        ${capEscapeV51(p.name || 'Playlist')}
-      </option>
-    `).join('');
-
-  const selected =
-    capSelectedPlaylistV51();
-
-  if(info){
-    info.textContent =
-      selected
-        ? (
-            (selected.musicIds?.length || 0) +
-            ' música' +
-            (
-              (selected.musicIds?.length || 0) === 1
-                ? ''
-                : 's'
-            )
-          )
-        : '';
-  }
-}
-
-function capEscapeV51(value){
-  return String(value || '')
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;');
-}
-
-/* =========================================================
-   ÁUDIO ONLINE
-========================================================= */
-
-function capEnsureRadioAudioV51(){
-  if(
-    typeof radioAudio !== 'undefined' &&
-    radioAudio
-  ){
-    return radioAudio;
-  }
-
-  try{
-    radioAudio = new Audio();
-    return radioAudio;
-  }catch{
-    return new Audio();
-  }
-}
-
-function capMusicVolumeV51(){
-  const input =
-    document.getElementById('musicVol');
-
-  let value =
-    input
-      ? Number(input.value)
-      : Number(
-          localStorage.getItem(
-            'cap_musicVol'
-          ) || 75
-        );
-
-  if(!Number.isFinite(value)){
-    value = 75;
-  }
-
-  return Math.max(
-    0,
-    Math.min(1,value / 100)
-  );
-}
-
-async function capPlayMusicObjectV51(media){
-  const url = capMediaUrlV51(media);
-
-  if(!url){
-    throw new Error(
-      'Música sem endereço online.'
-    );
-  }
-
-  const audio =
-    capEnsureRadioAudioV51();
-
-  audio.pause();
-
-  audio.src = url;
-
-  audio.volume =
-    capMusicVolumeV51();
-
-  audio.preload = 'auto';
-
-  await audio.play();
-
-  return new Promise(resolve=>{
-    let finished = false;
-
-    const done = ()=>{
-      if(finished)return;
-
-      finished = true;
-
-      audio.removeEventListener(
-        'ended',
-        done
-      );
-
-      audio.removeEventListener(
-        'error',
-        fail
-      );
-
-      resolve(true);
-    };
-
-    const fail = ()=>{
-      if(finished)return;
-
-      finished = true;
-
-      audio.removeEventListener(
-        'ended',
-        done
-      );
-
-      audio.removeEventListener(
-        'error',
-        fail
-      );
-
-      resolve(false);
-    };
-
-    audio.addEventListener(
-      'ended',
-      done,
-      {once:true}
+   const p =
+    capPlaylistsV52.find(
+     x=>
+      String(x.id) ===
+      String(capPendingPlaylistV52)
     );
 
-    audio.addEventListener(
-      'error',
-      fail,
-      {once:true}
-    );
-  });
-}
+   state.textContent =
+    '⏳ ' +
+    (
+     p?.name ||
+     'Nova playlist'
+    ) +
+    ' entra quando a música atual terminar.';
 
-/* =========================================================
-   PRÓXIMA MÚSICA ONLINE
-========================================================= */
-
-async function capPlayNextOnlineMusicV51(){
-  if(capOnlineRadioBusyV51){
-    return false;
-  }
-
-  const music =
-    capPlaylistMusicsV51();
-
-  if(!music.length){
-    return false;
-  }
-
-  capOnlineRadioBusyV51 = true;
-
-  try{
-    if(
-      capOnlineMusicIndexV51 >=
-      music.length
-    ){
-      capOnlineMusicIndexV51 = 0;
-    }
-
-    const current =
-      music[
-        capOnlineMusicIndexV51
-      ];
-
-    capOnlineMusicIndexV51++;
-
-    if(
-      capOnlineMusicIndexV51 >=
-      music.length
-    ){
-      capOnlineMusicIndexV51 = 0;
-    }
-
-    await capPlayMusicObjectV51(
-      current
-    );
-
-    return true;
-
-  }finally{
-    capOnlineRadioBusyV51 = false;
-  }
-}
-
-/* =========================================================
-   VINHETAS ONLINE
-========================================================= */
-
-async function capGetJinglesV51(){
-  try{
-    const d =
-      await capFetchJsonV51(
-        '/api/jingles'
-      );
-
-    return d?.jingles || {};
-  }catch{
-    return {};
-  }
-}
-
-function capRamoV51(){
-  try{
-    return String(
-      store?.ramo ||
-      store?.businessType ||
-      ''
-    ).trim();
-  }catch{
-    return '';
-  }
-}
-
-function capUseJinglesV51(){
-  const possible = [
-    document.getElementById(
-      'useJingles'
-    ),
-    document.getElementById(
-      'jinglesOn'
-    )
-  ].filter(Boolean);
-
-  if(possible.length){
-    const el = possible[0];
-
-    if(
-      el.type === 'checkbox'
-    ){
-      return !!el.checked;
-    }
-
-    const value =
-      String(el.value || '')
-        .toLowerCase();
-
-    if(
-      value === 'não' ||
-      value === 'nao' ||
-      value === '0' ||
-      value === 'false'
-    ){
-      return false;
-    }
-  }
-
-  const saved =
-    localStorage.getItem(
-      'cap_use_jingles_' +
-      capPlaylistClientCodeV51()
-    );
-
-  return saved !== '0';
-}
-
-async function capPlayOnlineJingleV51(type){
-  if(!capUseJinglesV51()){
-    return false;
-  }
-
-  const ramo =
-    capRamoV51();
-
-  if(!ramo){
-    return false;
-  }
-
-  const jingles =
-    await capGetJinglesV51();
-
-  const list =
-    jingles?.[ramo]?.[type];
-
-  if(
-    !Array.isArray(list) ||
-    !list.length
-  ){
-    return false;
-  }
-
-  const item =
-    list[
-      Math.floor(
-        Math.random() *
-        list.length
-      )
-    ];
-
-  const mediaId =
-    item?.mediaId;
-
-  if(!mediaId){
-    return false;
-  }
-
-  const audio =
-    new Audio(
-      CAP_PLAYLIST_SERVER_V51 +
-      '/api/media/' +
-      encodeURIComponent(mediaId)
-    );
-
-  audio.volume = 1;
-
-  try{
-    await audio.play();
-
-    await new Promise(resolve=>{
-      audio.onended = resolve;
-      audio.onerror = resolve;
-    });
-
-    return true;
-
-  }catch{
-    return false;
-  }
-}
-
-/* =========================================================
-   ANÚNCIOS
-========================================================= */
-
-function capActiveAdsV51(){
-  try{
-    const now = Date.now();
-
-    return (ads || [])
-      .filter(ad=>
-        ad &&
-        !ad.paused &&
-        (
-          !ad.exp ||
-          Number(ad.exp) > now
-        )
-      );
-  }catch{
-    return [];
-  }
-}
-
-function capAdsPerBlockV51(){
-  const el =
-    document.getElementById(
-      'adsPerBlock'
-    );
-
-  let value =
-    el
-      ? Number(el.value)
-      : Number(
-          localStorage.getItem(
-            'cap_ads_per_block_' +
-            capPlaylistClientCodeV51()
-          ) || 3
-        );
-
-  if(
-    !Number.isFinite(value) ||
-    value < 1
-  ){
-    value = 3;
-  }
-
-  return Math.max(
-    1,
-    Math.min(20,value)
-  );
-}
-
-async function capGetAdBlobV51(ad){
-  if(!ad)return null;
-
-  if(ad.mediaId){
-    return {
-      online:true,
-      url:
-        CAP_PLAYLIST_SERVER_V51 +
-        '/api/media/' +
-        encodeURIComponent(
-          ad.mediaId
-        )
-    };
-  }
-
-  if(ad.url){
-    return {
-      online:true,
-      url:
-        /^https?:\/\//i.test(ad.url)
-          ? ad.url
-          : CAP_PLAYLIST_SERVER_V51 +
-            (
-              String(ad.url)
-                .startsWith('/')
-                ? ad.url
-                : '/' + ad.url
-            )
-    };
-  }
-
-  if(
-    ad.audioKey &&
-    typeof capGetAdBlob ===
-      'function'
-  ){
-    try{
-      const blob =
-        await capGetAdBlob(
-          ad.audioKey
-        );
-
-      if(blob){
-        return {
-          online:false,
-          blob
-        };
-      }
-    }catch{}
-  }
-
-  if(
-    ad.audioKey &&
-    typeof capGetAdBlobV19 ===
-      'function'
-  ){
-    try{
-      const blob =
-        await capGetAdBlobV19(
-          ad.audioKey
-        );
-
-      if(blob){
-        return {
-          online:false,
-          blob
-        };
-      }
-    }catch{}
-  }
-
-  return null;
-}
-
-async function capPlayOneAdV51(ad){
-  const source =
-    await capGetAdBlobV51(ad);
-
-  if(!source){
-    return false;
-  }
-
-  let url = '';
-  let revoke = false;
-
-  if(source.online){
-    url = source.url;
   }else{
-    url =
-      URL.createObjectURL(
-        source.blob
-      );
 
-    revoke = true;
+   state.textContent =
+    '🟢 Playlist ativa: ' +
+    (
+     capPlaylistAtualV52()
+      ?.name ||
+     'nenhuma'
+    );
   }
+ }
 
-  const audio =
-    new Audio(url);
-
-  audio.volume = 1;
-
-  try{
-    await audio.play();
-
-    await new Promise(resolve=>{
-      audio.onended = resolve;
-      audio.onerror = resolve;
-    });
-
-    return true;
-
-  }catch{
-    return false;
-
-  }finally{
-    if(revoke){
-      try{
-        URL.revokeObjectURL(url);
-      }catch{}
-    }
-  }
+ capAtualizarStatusV52();
 }
 
-async function capPlayAdsBlockV51(){
-  const active =
-    capActiveAdsV51();
+/* =========================================================
+   ERRO
+========================================================= */
 
-  if(!active.length){
-    return false;
+function capRenderErroV52(){
+
+ capTrocarTituloTemaV52();
+
+ const box =
+  capThemeButtonsV52();
+
+ const state =
+  capThemeStateV52();
+
+ if(box){
+
+  box.innerHTML = `
+   <div style="
+    width:100%;
+    padding:15px;
+    text-align:center;
+    font-weight:800;
+   ">
+    Não foi possível carregar as playlists.
+   </div>
+  `;
+ }
+
+ if(state){
+  state.textContent =
+   'Servidor da rádio indisponível.';
+ }
+}
+
+/* =========================================================
+   STATUS
+========================================================= */
+
+function capAtualizarStatusV52(){
+
+ const info =
+  document.getElementById(
+   'admSyncInfo'
+  );
+
+ if(!info){
+  return;
+ }
+
+ const playlist =
+  capPlaylistAtualV52();
+
+ const musicas =
+  capMusicasPlaylistV52();
+
+ info.innerHTML =
+  `✅ ${capEscapeV52(
+   store?.ramo || ''
+  )} • <b>${
+   capEscapeV52(
+    playlist?.name ||
+    'Sem playlist'
+   )
+  }</b> • ${
+   musicas.length
+  } música${
+   musicas.length === 1
+    ? ''
+    : 's'
+  } online`;
+}
+
+/* =========================================================
+   COMPATIBILIDADE COM FUNÇÕES ANTIGAS
+========================================================= */
+
+try{
+
+ window.chooseThemeV11 =
+  function(id){
+   capEscolherPlaylistV52(id);
+  };
+
+ window.renderThemesV11 =
+  function(){
+   capRenderPlaylistV52();
+  };
+
+ window.updateAdmStatus =
+  function(){
+   capAtualizarStatusV52();
+  };
+
+}catch(e){}
+
+/* =========================================================
+   TOCAR PRÓXIMA MÚSICA
+========================================================= */
+
+async function capPlayNextMusicV52(){
+
+ if(
+  typeof playing !==
+   'undefined' &&
+  !playing
+ ){
+  return;
+ }
+
+ /* APLICA TROCA PENDENTE */
+
+ if(capPendingPlaylistV52){
+
+  capSelectedPlaylistV52 =
+   capPendingPlaylistV52;
+
+  capPendingPlaylistV52 =
+   '';
+
+  capPlaylistIndexV52 =
+   0;
+
+  await capSalvarPlaylistV52(
+   capSelectedPlaylistV52
+  );
+ }
+
+ const list =
+  capMusicasPlaylistV52();
+
+ if(!list.length){
+
+  const title =
+   document.getElementById(
+    'nowTitle'
+   );
+
+  const sub =
+   document.getElementById(
+    'nowSub'
+   );
+
+  if(title){
+   title.textContent =
+    'Playlist sem músicas';
   }
 
-  const amount =
+  if(sub){
+   sub.textContent =
+    'Escolha uma playlist com músicas.';
+  }
+
+  try{
+   playing = false;
+  }catch(e){}
+
+  if(
+   typeof syncPlayUi ===
+   'function'
+  ){
+   syncPlayUi();
+  }
+
+  return;
+ }
+
+ if(
+  capPlaylistIndexV52 >=
+  list.length
+ ){
+  capPlaylistIndexV52 =
+   0;
+ }
+
+ const meta =
+  list[
+   capPlaylistIndexV52++
+  ];
+
+ const url =
+  capMediaUrlV52(meta);
+
+ if(!url){
+
+  setTimeout(
+   capPlayNextMusicV52,
+   500
+  );
+
+  return;
+ }
+
+ try{
+
+  if(
+   typeof radioAudio !==
+    'undefined' &&
+   radioAudio
+  ){
+   radioAudio.pause();
+
+   radioAudio.onended =
+    null;
+
+   radioAudio.onerror =
+    null;
+  }
+
+  radioAudio =
+   new Audio(url);
+
+  const volume =
+   document.getElementById(
+    'musicVol'
+   );
+
+  let v =
+   Number(
+    volume?.value || 75
+   );
+
+  if(!Number.isFinite(v)){
+   v = 75;
+  }
+
+  radioAudio.volume =
+   Math.max(
+    0,
     Math.min(
-      capAdsPerBlockV51(),
-      active.length
+     1,
+     v / 100
+    )
+   );
+
+  const title =
+   document.getElementById(
+    'nowTitle'
+   );
+
+  const sub =
+   document.getElementById(
+    'nowSub'
+   );
+
+  if(title){
+   title.textContent =
+    meta.name ||
+    'Música';
+  }
+
+  if(sub){
+   sub.textContent =
+    '🎵 ' +
+    (
+     capPlaylistAtualV52()
+      ?.name ||
+     'Playlist'
+    ) +
+    ' • ' +
+    (
+     store?.name ||
+     ''
     );
+  }
 
-  window.capAdCursorV51 =
-    Number(
-      window.capAdCursorV51 || 0
-    );
+  radioAudio.onended =
+   async ()=>{
 
-  const selected = [];
-
-  for(let i=0;i<amount;i++){
     if(
-      window.capAdCursorV51 >=
-      active.length
+     typeof playing !==
+      'undefined' &&
+     !playing
     ){
-      window.capAdCursorV51 = 0;
+     return;
     }
 
-    selected.push(
-      active[
-        window.capAdCursorV51
-      ]
+    /*
+      A playlist solicitada durante
+      a música entra somente depois
+      da música terminar.
+    */
+
+    if(capPendingPlaylistV52){
+
+     capSelectedPlaylistV52 =
+      capPendingPlaylistV52;
+
+     capPendingPlaylistV52 =
+      '';
+
+     capPlaylistIndexV52 =
+      0;
+
+     await capSalvarPlaylistV52(
+      capSelectedPlaylistV52
+     );
+    }
+
+    if(
+     typeof capRadioAfterMusicV16 ===
+     'function'
+    ){
+     capRadioAfterMusicV16();
+    }else{
+     capPlayNextMusicV52();
+    }
+   };
+
+  radioAudio.onerror =
+   ()=>{
+
+    console.warn(
+     'Erro ao tocar música:',
+     meta
     );
 
-    window.capAdCursorV51++;
-  }
+    if(
+     typeof playing ===
+      'undefined' ||
+     playing
+    ){
+     setTimeout(
+      capPlayNextMusicV52,
+      700
+     );
+    }
+   };
 
-  await capPlayOnlineJingleV51(
-    'entry'
+  await radioAudio.play();
+
+ }catch(e){
+
+  console.error(
+   'Erro ao iniciar música:',
+   e
   );
 
-  for(const ad of selected){
-    await capPlayOneAdV51(ad);
-  }
-
-  await capPlayOnlineJingleV51(
-    'exit'
-  );
-
-  return true;
-}
-
-/* =========================================================
-   TOP DO DIA
-========================================================= */
-
-function capTopAdsV51(){
-  return capActiveAdsV51()
-    .filter(ad=>!!ad.top);
-}
-
-async function capPlayTopV51(){
-  const topAds =
-    capTopAdsV51();
-
-  if(!topAds.length){
-    return false;
-  }
-
-  const day =
-    new Date()
-      .toISOString()
-      .slice(0,10);
-
-  const key =
-    'cap_top_played_v51_' +
-    capPlaylistClientCodeV51();
+  try{
+   playing = false;
+  }catch(err){}
 
   if(
-    localStorage.getItem(key) ===
-    day
+   typeof syncPlayUi ===
+   'function'
   ){
-    return false;
+   syncPlayUi();
   }
-
-  const ad = topAds[0];
-
-  await capPlayOnlineJingleV51(
-    'top-entry'
-  );
-
-  await capPlayOneAdV51(ad);
-
-  await capPlayOnlineJingleV51(
-    'top-exit'
-  );
-
-  localStorage.setItem(
-    key,
-    day
-  );
-
-  return true;
+ }
 }
+
+/* SUBSTITUI O MOTOR ANTIGO */
+
+try{
+ playNextAdmMusic =
+  capPlayNextMusicV52;
+}catch(e){}
+
+window.playNextAdmMusic =
+ capPlayNextMusicV52;
 
 /* =========================================================
-   MOTOR DA RÁDIO ONLINE
+   BOTÃO INICIAR / PAUSAR
 ========================================================= */
 
-let capRadioLoopRunningV51 = false;
+function capBindPlayV52(){
 
-function capRadioIsOnV51(){
-  try{
-    if(
-      typeof radioOn !==
-      'undefined'
-    ){
-      return !!radioOn;
-    }
-  }catch{}
+ const btn =
+  document.getElementById(
+   'play'
+  );
 
-  return !!window.capRadioOnV51;
-}
+ if(!btn){
+  return;
+ }
 
-async function capRadioLoopV51(){
-  if(capRadioLoopRunningV51){
-    return;
-  }
+ if(
+  btn.dataset.capPlaylistV52 ===
+  '1'
+ ){
+  return;
+ }
 
-  capRadioLoopRunningV51 = true;
+ btn.dataset.capPlaylistV52 =
+  '1';
 
-  try{
-    while(capRadioIsOnV51()){
+ btn.onclick =
+  async ()=>{
 
-      const musics =
-        capPlaylistMusicsV51();
+   const list =
+    capMusicasPlaylistV52();
 
-      /*
-        COM PLAYLIST:
-        música inteira
-        TOP se houver
-        vinheta entrada
-        anúncios
-        vinheta saída
-        próxima música
-      */
+   if(
+    typeof playing !==
+     'undefined' &&
+    !playing &&
+    !list.length
+   ){
 
-      if(musics.length){
-
-        await capPlayNextOnlineMusicV51();
-
-        if(!capRadioIsOnV51()){
-          break;
-        }
-
-        await capPlayTopV51();
-
-        if(!capRadioIsOnV51()){
-          break;
-        }
-
-        await capPlayAdsBlockV51();
-
-        continue;
-      }
-
-      /*
-        SEM PLAYLIST:
-        a rádio não fica muda.
-        Se houver anúncio, toca bloco.
-      */
-
-      const adsAvailable =
-        capActiveAdsV51();
-
-      if(adsAvailable.length){
-
-        await capPlayTopV51();
-
-        if(!capRadioIsOnV51()){
-          break;
-        }
-
-        await capPlayAdsBlockV51();
-
-        if(!capRadioIsOnV51()){
-          break;
-        }
-
-        await new Promise(
-          resolve=>
-            setTimeout(
-              resolve,
-              1500
-            )
-        );
-
-        continue;
-      }
-
-      /*
-        Sem música e sem anúncio:
-        aguarda sem travar.
-      */
-
-      await new Promise(
-        resolve=>
-          setTimeout(
-            resolve,
-            3000
-          )
-      );
-    }
-
-  }catch(error){
-    console.error(
-      'Erro no motor online da rádio:',
-      error
+    alert(
+     'Escolha uma playlist com músicas.'
     );
 
-  }finally{
-    capRadioLoopRunningV51 = false;
-  }
-}
+    return;
+   }
 
-/* =========================================================
-   LIGAR / DESLIGAR
-========================================================= */
+   playing =
+    !playing;
 
-function capStartOnlineRadioV51(){
-  window.capRadioOnV51 = true;
+   if(
+    typeof syncPlayUi ===
+    'function'
+   ){
+    syncPlayUi();
+   }
 
-  try{
-    radioOn = true;
-  }catch{}
+   if(playing){
 
-  capRadioLoopV51();
-}
+    await capPlayNextMusicV52();
 
-function capStopOnlineRadioV51(){
-  window.capRadioOnV51 = false;
+   }else{
 
-  try{
-    radioOn = false;
-  }catch{}
+    try{
 
-  try{
-    if(radioAudio){
+     if(radioAudio){
       radioAudio.pause();
-    }
-  }catch{}
-}
+     }
 
-/* =========================================================
-   CONECTAR AOS BOTÕES EXISTENTES DO PLAYER
-========================================================= */
+    }catch(e){}
 
-function capBindRadioButtonsV51(){
-  const buttons =
-    [...document.querySelectorAll(
-      'button'
-    )];
+    const title =
+     document.getElementById(
+      'nowTitle'
+     );
 
-  buttons.forEach(button=>{
+    const sub =
+     document.getElementById(
+      'nowSub'
+     );
 
-    if(button.dataset.capV51){
-      return;
-    }
-
-    const text =
-      String(
-        button.textContent || ''
-      )
-      .trim()
-      .toLowerCase();
-
-    const looksLikeStart =
-      text === 'ligar rádio' ||
-      text === 'ligar radio' ||
-      text === '▶ ligar rádio' ||
-      text === '▶ ligar radio' ||
-      text === 'iniciar rádio' ||
-      text === 'iniciar radio';
-
-    const looksLikeStop =
-      text === 'desligar rádio' ||
-      text === 'desligar radio' ||
-      text === '⏹ desligar rádio' ||
-      text === '⏹ desligar radio' ||
-      text === 'parar rádio' ||
-      text === 'parar radio';
-
-    if(looksLikeStart){
-      button.dataset.capV51 = 'start';
-
-      button.addEventListener(
-        'click',
-        ()=>{
-          setTimeout(
-            capStartOnlineRadioV51,
-            80
-          );
-        }
-      );
+    if(title){
+     title.textContent =
+      'Rádio pausada';
     }
 
-    if(looksLikeStop){
-      button.dataset.capV51 = 'stop';
-
-      button.addEventListener(
-        'click',
-        ()=>{
-          capStopOnlineRadioV51();
-        }
-      );
+    if(sub){
+     sub.textContent =
+      'Escolha uma playlist e inicie quando quiser';
     }
-  });
-}
-
-/* =========================================================
-   SINCRONIZAR COM LOGIN DO CLIENTE
-========================================================= */
-
-async function capInitClientPlaylistV51(){
-  if(
-    !capPlaylistClientCodeV51()
-  ){
-    return;
-  }
-
-  await capLoadOnlinePlaylistsV51();
-
-  await capLoadPlaylistFromClientStateV51();
-
-  capCurrentPlaylistV51 =
-    capGetSavedPlaylistV51();
-
-  capRenderPlaylistSelectorV51();
-}
-
-/*
-  O applyAdmStore já é chamado quando o código do cliente
-  é validado no Player V50.
-*/
-
-if(
-  typeof applyAdmStore ===
-  'function'
-){
-  const capOldApplyAdmStoreV51 =
-    applyAdmStore;
-
-  applyAdmStore = function(c){
-
-    const result =
-      capOldApplyAdmStoreV51(c);
-
-    setTimeout(
-      ()=>{
-        capInitClientPlaylistV51()
-          .catch(console.error);
-      },
-      150
-    );
-
-    return result;
+   }
   };
 }
 
 /* =========================================================
-   INICIALIZAÇÃO
+   SINCRONIZA PLAYLIST COM ESTADO V50
+========================================================= */
+
+const capOldPushV52 =
+ typeof capPushClientStateV50 ===
+ 'function'
+  ? capPushClientStateV50
+  : null;
+
+if(capOldPushV52){
+
+ capPushClientStateV50 =
+  async function(){
+
+   if(
+    !capClientReady ||
+    !store.code
+   ){
+    return;
+   }
+
+   try{
+
+    const safeAds =
+     ads.map(
+      a=>({
+       ...a,
+       clientCode:
+        String(store.code)
+      })
+     );
+
+    await fetch(
+     CAP_V52_SERVER +
+     '/api/client/' +
+     encodeURIComponent(
+      store.code
+     ) +
+     '/state',
+     {
+      method:'PUT',
+
+      headers:{
+       'Content-Type':
+        'application/json'
+      },
+
+      body:JSON.stringify({
+       ads:safeAds,
+
+       voiceTurn,
+
+       adsPerBlock:+(
+        document
+         .getElementById(
+          'adsPerBlock'
+         )
+         ?.value ||
+        3
+       ),
+
+       selectedPlaylistId:
+        capSelectedPlaylistV52,
+
+       selectedPlaylist:
+        capSelectedPlaylistV52,
+
+       updatedAt:
+        new Date()
+         .toISOString()
+      })
+     }
+    );
+
+   }catch(e){
+
+    console.warn(
+     'Não foi possível sincronizar o estado agora.',
+     e
+    );
+   }
+  };
+}
+
+/* =========================================================
+   LOGIN
+========================================================= */
+
+if(
+ typeof applyAdmStore ===
+ 'function'
+){
+
+ const capOldApplyStoreV52 =
+  applyAdmStore;
+
+ applyAdmStore =
+  function(c){
+
+   const result =
+    capOldApplyStoreV52(c);
+
+   capSelectedPlaylistV52 =
+    localStorage.getItem(
+     'capivara_playlist_' +
+     String(
+      c?.code ||
+      store?.code ||
+      ''
+     )
+    ) ||
+    '';
+
+   capPendingPlaylistV52 =
+    '';
+
+   capPlaylistIndexV52 =
+    0;
+
+   setTimeout(
+    async ()=>{
+
+     await capCarregarRadioOnlineV52();
+
+     capBindPlayV52();
+
+    },
+    150
+   );
+
+   return result;
+  };
+}
+
+/* =========================================================
+   INIT
 ========================================================= */
 
 document.addEventListener(
-  'DOMContentLoaded',
-  ()=>{
-    capEnsurePlaylistUIV51();
+ 'DOMContentLoaded',
+ ()=>{
 
-    capBindRadioButtonsV51();
+  capTrocarTituloTemaV52();
 
-    const observer =
-      new MutationObserver(
-        ()=>{
-          capBindRadioButtonsV51();
+  capBindPlayV52();
 
-          if(
-            !document.getElementById(
-              'capPlaylistBoxV51'
-            )
-          ){
-            capEnsurePlaylistUIV51();
-          }
-        }
-      );
+  if(
+   typeof capClientReady !==
+    'undefined' &&
+   capClientReady
+  ){
 
-    observer.observe(
-      document.body,
-      {
-        childList:true,
-        subtree:true
-      }
-    );
-
-    if(
-      capPlaylistClientCodeV51()
-    ){
-      setTimeout(
-        ()=>{
-          capInitClientPlaylistV51()
-            .catch(console.error);
-        },
-        300
-      );
-    }
+   setTimeout(
+    capCarregarRadioOnlineV52,
+    300
+   );
   }
+
+  const observer =
+   new MutationObserver(
+    ()=>{
+
+     capTrocarTituloTemaV52();
+
+     capBindPlayV52();
+    }
+   );
+
+  observer.observe(
+   document.body,
+   {
+    childList:true,
+    subtree:true
+   }
+  );
+ }
 );
 
 /* =========================================================
-   ATUALIZAÇÃO PERIÓDICA DO ACERVO
+   ATUALIZA PLAYLISTS A CADA 60 SEGUNDOS
 ========================================================= */
 
 setInterval(
-  ()=>{
-    if(
-      capPlaylistClientCodeV51()
-    ){
-      capLoadOnlinePlaylistsV51()
-        .catch(()=>{});
-    }
-  },
-  60000
+ ()=>{
+
+  if(
+   typeof capClientReady !==
+    'undefined' &&
+   capClientReady
+  ){
+   capCarregarRadioOnlineV52();
+  }
+
+ },
+ 60000
 );
 
 /* =========================================================
    FUNÇÕES GLOBAIS
 ========================================================= */
 
-window.capLoadOnlinePlaylistsV51 =
-  capLoadOnlinePlaylistsV51;
+window.capCarregarRadioOnlineV52 =
+ capCarregarRadioOnlineV52;
 
-window.capSelectPlaylistV51 =
-  capSelectPlaylistV51;
+window.capSalvarPlaylistV52 =
+ capSalvarPlaylistV52;
 
-window.capStartOnlineRadioV51 =
-  capStartOnlineRadioV51;
+window.capPlayNextMusicV52 =
+ capPlayNextMusicV52;
 
-window.capStopOnlineRadioV51 =
-  capStopOnlineRadioV51;
-
-window.capRadioLoopV51 =
-  capRadioLoopV51;
+})();
