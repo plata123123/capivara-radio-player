@@ -1,975 +1,1689 @@
-````javascript
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 let ads=[], voiceTurn=0, level='medio', playing=false, createMode='normal';
 let capClientReady=false;
+const defaults={musicVol:'75',bedVol:'6',jingles:true,mentionStore:false,fullCurrency:false,open:'08:00',close:'20:00'};
+let store={name:'Açougue Uberaba',type:'Açougue',code:'123456',ramo:'Açougue'};
 
-const defaults={
- musicVol:'75',
- bedVol:'6',
- jingles:true,
- mentionStore:false,
- fullCurrency:false,
- open:'08:00',
- close:'20:00'
-};
-
-let store={
- name:'Açougue Uberaba',
- type:'Açougue',
- code:'123456',
- ramo:'Açougue'
-};
-
-function admClients(){
- try{
-  return JSON.parse(localStorage.getItem('capivara_admin_clients')||'[]')
- }catch(e){
-  return []
- }
-}
-
-function admPackages(){
- try{
-  return JSON.parse(localStorage.getItem('capivara_ramo_packages_v6')||'{}')
- }catch(e){
-  return {}
- }
-}
-
-function capClientKey(base){
- return base+'__'+String(store.code||'SEM_CLIENTE')
-}
-
-function capClientAudioKey(id){
- return 'cliente:'+String(store.code)+':audio:'+id
-}
+function admClients(){try{return JSON.parse(localStorage.getItem('capivara_admin_clients')||'[]')}catch(e){return []}}
+function admPackages(){try{return JSON.parse(localStorage.getItem('capivara_ramo_packages_v6')||'{}')}catch(e){return {}}}
+function capClientKey(base){return base+'__'+String(store.code||'SEM_CLIENTE')}
+function capClientAudioKey(id){return 'cliente:'+String(store.code)+':audio:'+id}
 
 function capLoadClient(){
  if(!store.code)return;
-
  capClientReady=true;
-
- try{
-  ads=JSON.parse(localStorage.getItem(capClientKey('cap_ads'))||'[]')
- }catch(e){
-  ads=[]
- }
-
+ try{ads=JSON.parse(localStorage.getItem(capClientKey('cap_ads'))||'[]')}catch(e){ads=[]}
  if(!Array.isArray(ads))ads=[];
-
  voiceTurn=+(localStorage.getItem(capClientKey('cap_voice'))||'0');
  level=localStorage.getItem(capClientKey('cap_level'))||'medio';
  pendingAudio={};
-
- try{
-  capAdCursorV16=0
- }catch(e){}
+ try{capAdCursorV16=0}catch(e){}
 }
 
-const THEMES_V11=[
- "Jazz & Lounge",
- "Sertanejo",
- "MPB & Brasilidades",
- "Flashback",
- "Dance & Pop",
- "Moderno / Hits",
- "Rock & Clássicos",
- "Instrumental & Ambiente",
- "Leve & Relax",
- "Popular & Animada"
-];
-
-let selectedThemeV11=
- localStorage.getItem('capivara_theme_'+store.code)||
- THEMES_V11[0],
- pendingThemeV11=null;
+const THEMES_V11=["Jazz & Lounge","Sertanejo","MPB & Brasilidades","Flashback","Dance & Pop","Moderno / Hits","Rock & Clássicos","Instrumental & Ambiente","Leve & Relax","Popular & Animada"];
+let selectedThemeV11=localStorage.getItem('capivara_theme_'+store.code)||THEMES_V11[0],pendingThemeV11=null;
 
 function applyAdmStore(c){
- try{
-  if(window.capCurrentSpokenAudio){
-   window.capCurrentSpokenAudio.pause();
-   window.capCurrentSpokenAudio=null
-  }
- }catch(e){}
-
- try{
-  if(radioAudio){
-   radioAudio.pause();
-   radioAudio=null
-  }
- }catch(e){}
-
- store={
-  name:c.name,
-  type:c.ramo,
-  ramo:c.ramo,
-  code:c.code
- };
-
+ try{if(window.capCurrentSpokenAudio){window.capCurrentSpokenAudio.pause();window.capCurrentSpokenAudio=null}}catch(e){}
+ try{if(radioAudio){radioAudio.pause();radioAudio=null}}catch(e){}
+ store={name:c.name,type:c.ramo,ramo:c.ramo,code:c.code};
  capLoadClient();
-
- selectedThemeV11=
-  localStorage.getItem('capivara_theme_'+store.code)||
-  THEMES_V11[0];
-
- const sn=document.getElementById('storeName');
-
- if(sn)sn.textContent=c.name;
-
+ selectedThemeV11=localStorage.getItem('capivara_theme_'+store.code)||THEMES_V11[0];
+ const sn=document.getElementById('storeName');if(sn)sn.textContent=c.name;
  const pkg=admPackages()[c.ramo]||{};
-
- const legacyMap={
-  'Leve':2,
-  'Médio':3,
-  'Frenético':5
- };
-
- const adminCfg=(()=>{
-  try{
-   return JSON.parse(localStorage.getItem('capivara_admin_settings')||'{}')
-  }catch(e){
-   return {}
-  }
- })();
-
- const q=
-  pkg.adsPerBlock||
-  legacyMap[pkg.mode]||
-  adminCfg.defaultAdsPerBlock||
-  3;
-
+ const legacyMap={'Leve':2,'Médio':3,'Frenético':5};
+ const adminCfg=(()=>{try{return JSON.parse(localStorage.getItem('capivara_admin_settings')||'{}')}catch(e){return {}}})();
+ const q=pkg.adsPerBlock||legacyMap[pkg.mode]||adminCfg.defaultAdsPerBlock||3;
  setTimeout(()=>setAdsPerBlock(q,false),0);
-
- renderThemesV11();
- updateAdmStatus();
- loadRamoProducts();
+ renderThemesV11();updateAdmStatus();loadRamoProducts();
 }
 
 function themeMusicV11(theme){
- try{
-  return JSON.parse(
-   localStorage.getItem('capivara_acervo_v9')||'[]'
-  ).filter(
-   m=>(m.theme||THEMES_V11[0])===theme
-  )
- }catch(e){
-  return []
- }
+ try{return JSON.parse(localStorage.getItem('capivara_acervo_v9')||'[]').filter(m=>(m.theme||THEMES_V11[0])===theme)}catch(e){return []}
 }
 
 function chooseThemeV11(theme){
- if(playing){
-  pendingThemeV11=theme;
-  renderThemesV11();
-  return
- }
-
+ if(playing){pendingThemeV11=theme;renderThemesV11();return}
  selectedThemeV11=theme;
-
- localStorage.setItem(
-  'capivara_theme_'+store.code,
-  theme
- );
-
- radioIndex=0;
-
- renderThemesV11();
- updateAdmStatus();
+ localStorage.setItem('capivara_theme_'+store.code,theme);
+ radioIndex=0;renderThemesV11();updateAdmStatus();
 }
 
 function renderThemesV11(){
- const box=document.getElementById('themeButtonsV11');
-
- if(!box)return;
-
- box.innerHTML=THEMES_V11.map(t=>
-  `<button class="${selectedThemeV11===t?'active':''} ${pendingThemeV11===t?'pending':''}" onclick="chooseThemeV11('${t.replace("'","\\'")}')">${t}</button>`
- ).join('');
-
+ const box=document.getElementById('themeButtonsV11');if(!box)return;
+ box.innerHTML=THEMES_V11.map(t=>`<button class="${selectedThemeV11===t?'active':''} ${pendingThemeV11===t?'pending':''}" onclick="chooseThemeV11('${t.replace("'","\\'")}')">${t}</button>`).join('');
  const st=document.getElementById('themeStateV11');
-
- if(st){
-  st.textContent=pendingThemeV11
-   ?`⏳ ${pendingThemeV11} entra quando a música atual terminar.`
-   :`🟢 Tema ativo: ${selectedThemeV11}`;
- }
+ if(st)st.textContent=pendingThemeV11?`⏳ ${pendingThemeV11} entra quando a música atual terminar.`:`🟢 Tema ativo: ${selectedThemeV11}`;
 }
 
 window.chooseThemeV11=chooseThemeV11;
 
 function updateAdmStatus(){
- const e=document.getElementById('admSyncInfo'),
- n=themeMusicV11(selectedThemeV11).length;
-
- if(e){
-  e.innerHTML=
-   `✅ ${store.ramo} • <b>${selectedThemeV11}</b> • ${n} música${n===1?'':'s'} no acervo`;
- }
-
+ const e=document.getElementById('admSyncInfo'),n=themeMusicV11(selectedThemeV11).length;
+ if(e)e.innerHTML=`✅ ${store.ramo} • <b>${selectedThemeV11}</b> • ${n} música${n===1?'':'s'} no acervo`;
  renderThemesV11();
 }
 
 const productCatalogs={
- 'Açougue':[
-  'Picanha','Alcatra','Contrafilé','Patinho','Acém',
-  'Costela','Frango','Linguiça','Pernil','Carne Moída',
-  'Maminha','Cupim','Coxão Mole','Coxão Duro','Fraldinha'
- ],
- 'Supermercado':[
-  'Arroz','Feijão','Açúcar','Café','Óleo',
-  'Leite','Macarrão','Farinha de Trigo','Carne','Frango',
-  'Ovos','Papel Higiênico','Sabão em Pó','Refrigerante','Cerveja'
- ],
- 'Farmácia':[
-  'Fraldas','Lenços Umedecidos','Shampoo','Condicionador','Sabonete',
-  'Desodorante','Protetor Solar','Hidratante','Creme Dental','Escova Dental',
-  'Absorvente','Preservativo','Vitaminas','Repelente','Algodão'
- ],
- 'Padaria':[
-  'Pão Francês','Pão de Queijo','Pão Doce','Bolo','Rosca',
-  'Sonho','Croissant','Salgados','Coxinha','Empada',
-  'Presunto','Muçarela','Leite','Café','Refrigerante'
- ],
- 'Hortifruti':[
-  'Banana','Maçã','Laranja','Mamão','Limão',
-  'Abacaxi','Manga','Uva','Tomate','Batata',
-  'Cebola','Cenoura','Alface','Couve','Ovos'
- ],
- 'Pet Shop':[
-  'Ração para Cães','Ração para Gatos','Petiscos','Areia para Gatos',
-  'Shampoo Pet','Antipulgas','Brinquedos','Coleiras','Guias','Camas',
-  'Tapete Higiênico','Comedouros','Sachês','Ossinhos','Banho e Tosa'
- ],
- 'Pizzaria':[
-  'Pizza Calabresa','Pizza Muçarela','Pizza Portuguesa',
-  'Pizza Frango com Catupiry','Pizza Marguerita','Pizza Quatro Queijos',
-  'Pizza Bacon','Pizza Carne Seca','Pizza Chocolate','Pizza Doce',
-  'Pizza Família','Combo Pizza + Refrigerante','Refrigerante',
-  'Borda Recheada','Delivery'
- ],
- 'Lanchonete':[
-  'X-Burguer','X-Salada','X-Bacon','X-Tudo','Hambúrguer Artesanal',
-  'Cachorro-Quente','Misto Quente','Batata Frita','Salgados','Coxinha',
-  'Pastel','Açaí','Suco','Refrigerante','Combo'
- ],
- 'Restaurante':[
-  'Prato Feito','Self-Service','Marmitex','Almoço Executivo','Feijoada',
-  'Churrasco','Frango','Peixe','Massas','Saladas',
-  'Sobremesa','Suco','Refrigerante','Delivery','Combo do Dia'
- ],
- 'Hotel / Pousada':[
-  'Diária','Suíte','Quarto Casal','Quarto Família','Café da Manhã',
-  'Pacote de Fim de Semana','Pacote Romântico','Feriado','Piscina',
-  'Restaurante','Estacionamento','Wi-Fi','Day Use','Evento',
-  'Reserva Antecipada'
- ],
- 'Roupas':[
-  'Camiseta','Camisa','Calça Jeans','Bermuda','Vestido',
-  'Blusa','Short','Saia','Conjunto','Jaqueta',
-  'Moletom','Roupa Infantil','Moda Íntima','Pijama','Promoção da Coleção'
- ],
- 'Calçados':[
-  'Tênis','Sapato Social','Sandália','Chinelo','Sapatilha',
-  'Bota','Tênis Infantil','Sandália Infantil','Sapato Infantil',
-  'Rasteirinha','Scarpin','Mocassim','Papete','Chuteira',
-  'Promoção de Calçados'
- ],
- 'Material de Construção':[
-  'Cimento','Areia','Brita','Tijolo','Telha',
-  'Argamassa','Tinta','Piso','Revestimento','Tubo PVC',
-  'Caixa d’Água','Ferramentas','Portas','Janelas','Material Elétrico'
- ],
- 'Autopeças':[
-  'Óleo do Motor','Filtro de Óleo','Filtro de Ar','Pastilha de Freio',
-  'Bateria','Palheta','Lâmpada','Correia','Vela de Ignição',
-  'Amortecedor','Pneu','Aditivo','Kit Embreagem','Rolamento','Acessórios'
- ],
- 'Oficina / Auto Center':[
-  'Troca de Óleo','Alinhamento','Balanceamento','Freios','Suspensão',
-  'Troca de Pneus','Revisão','Ar-Condicionado','Injeção Eletrônica',
-  'Embreagem','Bateria','Escapamento','Correia Dentada',
-  'Diagnóstico','Higienização'
- ],
- 'Posto / Conveniência':[
-  'Gasolina','Etanol','Diesel','Óleo Lubrificante','Aditivo',
-  'Calibragem','Lavagem','Café','Água','Refrigerante',
-  'Energético','Salgados','Sanduíche','Gelo','Carvão'
- ],
- 'Cosméticos / Perfumaria':[
-  'Perfume Feminino','Perfume Masculino','Hidratante','Shampoo',
-  'Condicionador','Maquiagem','Batom','Base','Protetor Solar',
-  'Desodorante','Kit Presente','Creme Facial','Esmalte',
-  'Sabonete','Produtos para Cabelo'
- ],
- 'Ótica':[
-  'Óculos de Grau','Óculos de Sol','Armação Feminina','Armação Masculina',
-  'Armação Infantil','Lentes','Lentes Multifocais','Lentes de Contato',
-  'Antirreflexo','Filtro de Luz Azul','Clip-on','Exame de Vista',
-  'Ajuste de Armação','Kit Limpeza','Promoção de Armações'
- ],
- 'Papelaria':[
-  'Caderno','Caneta','Lápis','Borracha','Mochila',
-  'Estojo','Papel A4','Impressão','Xerox','Material Escolar',
-  'Cartolina','Cola','Tesoura','Agenda','Kit Escolar'
- ],
- 'Móveis / Eletro':[
-  'Sofá','Cama','Colchão','Guarda-Roupa','Mesa',
-  'Cadeira','Rack','Geladeira','Fogão','Máquina de Lavar',
-  'Televisão','Micro-ondas','Ventilador','Air Fryer','Liquidificador'
- ],
- 'Agropecuária / Rações':[
-  'Ração para Cães','Ração para Gatos','Ração para Aves',
-  'Ração para Equinos','Ração para Bovinos','Milho','Sal Mineral',
-  'Sementes','Adubo','Ferramentas','Bebedouro','Comedouro',
-  'Produtos Veterinários','Selaria','Acessórios Rurais'
- ],
- 'Distribuidora de Bebidas':[
-  'Água','Refrigerante','Suco','Energético','Cerveja',
-  'Gelo','Água com Gás','Isotônico','Chá Gelado','Tônica',
-  'Carvão','Copos Descartáveis','Combo para Festa',
-  'Fardo de Água','Fardo de Refrigerante'
- ],
- 'Utilidades / Variedades':[
-  'Panelas','Potes','Copos','Pratos','Talheres',
-  'Baldes','Vassouras','Produtos de Limpeza','Organizadores',
-  'Toalhas','Tapetes','Ferramentas','Brinquedos',
-  'Material Escolar','Itens para Cozinha'
- ]
+'Açougue':['Picanha','Alcatra','Contrafilé','Patinho','Acém','Costela','Frango','Linguiça','Pernil','Carne Moída','Maminha','Cupim','Coxão Mole','Coxão Duro','Fraldinha'],
+'Supermercado':['Arroz','Feijão','Açúcar','Café','Óleo','Leite','Macarrão','Farinha de Trigo','Carne','Frango','Ovos','Papel Higiênico','Sabão em Pó','Refrigerante','Cerveja'],
+'Farmácia':['Fraldas','Lenços Umedecidos','Shampoo','Condicionador','Sabonete','Desodorante','Protetor Solar','Hidratante','Creme Dental','Escova Dental','Absorvente','Preservativo','Vitaminas','Repelente','Algodão'],
+'Padaria':['Pão Francês','Pão de Queijo','Pão Doce','Bolo','Rosca','Sonho','Croissant','Salgados','Coxinha','Empada','Presunto','Muçarela','Leite','Café','Refrigerante'],
+'Hortifruti':['Banana','Maçã','Laranja','Mamão','Limão','Abacaxi','Manga','Uva','Tomate','Batata','Cebola','Cenoura','Alface','Couve','Ovos'],
+'Pet Shop':['Ração para Cães','Ração para Gatos','Petiscos','Areia para Gatos','Shampoo Pet','Antipulgas','Brinquedos','Coleiras','Guias','Camas','Tapete Higiênico','Comedouros','Sachês','Ossinhos','Banho e Tosa'],
+'Pizzaria':['Pizza Calabresa','Pizza Muçarela','Pizza Portuguesa','Pizza Frango com Catupiry','Pizza Marguerita','Pizza Quatro Queijos','Pizza Bacon','Pizza Carne Seca','Pizza Chocolate','Pizza Doce','Pizza Família','Combo Pizza + Refrigerante','Refrigerante','Borda Recheada','Delivery'],
+'Lanchonete':['X-Burguer','X-Salada','X-Bacon','X-Tudo','Hambúrguer Artesanal','Cachorro-Quente','Misto Quente','Batata Frita','Salgados','Coxinha','Pastel','Açaí','Suco','Refrigerante','Combo'],
+'Restaurante':['Prato Feito','Self-Service','Marmitex','Almoço Executivo','Feijoada','Churrasco','Frango','Peixe','Massas','Saladas','Sobremesa','Suco','Refrigerante','Delivery','Combo do Dia'],
+'Hotel / Pousada':['Diária','Suíte','Quarto Casal','Quarto Família','Café da Manhã','Pacote de Fim de Semana','Pacote Romântico','Feriado','Piscina','Restaurante','Estacionamento','Wi-Fi','Day Use','Evento','Reserva Antecipada'],
+'Roupas':['Camiseta','Camisa','Calça Jeans','Bermuda','Vestido','Blusa','Short','Saia','Conjunto','Jaqueta','Moletom','Roupa Infantil','Moda Íntima','Pijama','Promoção da Coleção'],
+'Calçados':['Tênis','Sapato Social','Sandália','Chinelo','Sapatilha','Bota','Tênis Infantil','Sandália Infantil','Sapato Infantil','Rasteirinha','Scarpin','Mocassim','Papete','Chuteira','Promoção de Calçados'],
+'Material de Construção':['Cimento','Areia','Brita','Tijolo','Telha','Argamassa','Tinta','Piso','Revestimento','Tubo PVC','Caixa d’Água','Ferramentas','Portas','Janelas','Material Elétrico'],
+'Autopeças':['Óleo do Motor','Filtro de Óleo','Filtro de Ar','Pastilha de Freio','Bateria','Palheta','Lâmpada','Correia','Vela de Ignição','Amortecedor','Pneu','Aditivo','Kit Embreagem','Rolamento','Acessórios'],
+'Oficina / Auto Center':['Troca de Óleo','Alinhamento','Balanceamento','Freios','Suspensão','Troca de Pneus','Revisão','Ar-Condicionado','Injeção Eletrônica','Embreagem','Bateria','Escapamento','Correia Dentada','Diagnóstico','Higienização'],
+'Posto / Conveniência':['Gasolina','Etanol','Diesel','Óleo Lubrificante','Aditivo','Calibragem','Lavagem','Café','Água','Refrigerante','Energético','Salgados','Sanduíche','Gelo','Carvão'],
+'Cosméticos / Perfumaria':['Perfume Feminino','Perfume Masculino','Hidratante','Shampoo','Condicionador','Maquiagem','Batom','Base','Protetor Solar','Desodorante','Kit Presente','Creme Facial','Esmalte','Sabonete','Produtos para Cabelo'],
+'Ótica':['Óculos de Grau','Óculos de Sol','Armação Feminina','Armação Masculina','Armação Infantil','Lentes','Lentes Multifocais','Lentes de Contato','Antirreflexo','Filtro de Luz Azul','Clip-on','Exame de Vista','Ajuste de Armação','Kit Limpeza','Promoção de Armações'],
+'Papelaria':['Caderno','Caneta','Lápis','Borracha','Mochila','Estojo','Papel A4','Impressão','Xerox','Material Escolar','Cartolina','Cola','Tesoura','Agenda','Kit Escolar'],
+'Móveis / Eletro':['Sofá','Cama','Colchão','Guarda-Roupa','Mesa','Cadeira','Rack','Geladeira','Fogão','Máquina de Lavar','Televisão','Micro-ondas','Ventilador','Air Fryer','Liquidificador'],
+'Agropecuária / Rações':['Ração para Cães','Ração para Gatos','Ração para Aves','Ração para Equinos','Ração para Bovinos','Milho','Sal Mineral','Sementes','Adubo','Ferramentas','Bebedouro','Comedouro','Produtos Veterinários','Selaria','Acessórios Rurais'],
+'Distribuidora de Bebidas':['Água','Refrigerante','Suco','Energético','Cerveja','Gelo','Água com Gás','Isotônico','Chá Gelado','Tônica','Carvão','Copos Descartáveis','Combo para Festa','Fardo de Água','Fardo de Refrigerante'],
+'Utilidades / Variedades':['Panelas','Potes','Copos','Pratos','Talheres','Baldes','Vassouras','Produtos de Limpeza','Organizadores','Toalhas','Tapetes','Ferramentas','Brinquedos','Material Escolar','Itens para Cozinha']
 };
 
-function normRamo(v){
- return String(v||'')
-  .normalize('NFD')
-  .replace(/[\u0300-\u036f]/g,'')
-  .trim()
-  .toLowerCase()
-}
-
-function catalogForRamo(r){
- const k=Object.keys(productCatalogs)
-  .find(x=>normRamo(x)===normRamo(r));
-
- return k
-  ?productCatalogs[k].map(x=>x.toLowerCase())
-  :[]
-}
-
-function productKey(){
- return 'cap_products_'+String(store.code||'semcodigo')
-}
-
-let products=catalogForRamo(store.ramo||store.type),
-selectedProduct='';
+function normRamo(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase()}
+function catalogForRamo(r){const k=Object.keys(productCatalogs).find(x=>normRamo(x)===normRamo(r));return k?productCatalogs[k].map(x=>x.toLowerCase()):[]}
+function productKey(){return 'cap_products_'+String(store.code||'semcodigo')}
+let products=catalogForRamo(store.ramo||store.type),selectedProduct='';
 
 function loadRamoProducts(){
- let saved=null;
-
- try{
-  saved=JSON.parse(localStorage.getItem(productKey())||'null')
- }catch(e){}
-
+ let saved=null;try{saved=JSON.parse(localStorage.getItem(productKey())||'null')}catch(e){}
  const base=catalogForRamo(store.ramo||store.type);
-
- products=
-  Array.isArray(saved)&&saved.length===15
-   ?saved
-   :[...base];
-
- localStorage.setItem(
-  productKey(),
-  JSON.stringify(products)
- );
-
- if(typeof renderProducts==='function'){
-  renderProducts()
- }
-
- if(typeof renderProductEditor==='function'){
-  renderProductEditor()
- }
+ products=Array.isArray(saved)&&saved.length===15?saved:[...base];
+ localStorage.setItem(productKey(),JSON.stringify(products));
+ if(typeof renderProducts==='function')renderProducts();
+ if(typeof renderProductEditor==='function')renderProductEditor();
 }
 
 function saveProducts(){
- localStorage.setItem(
-  productKey(),
-  JSON.stringify(products)
- );
-
+ localStorage.setItem(productKey(),JSON.stringify(products));
  renderProducts();
  renderProductEditor()
 }
 
 function selectProduct(name){
  selectedProduct=name;
-
  $('#selectedName').textContent=name;
  $('#selectedProduct').classList.remove('hidden');
-
- $$('#favorites button').forEach(
-  b=>b.classList.toggle(
-   'selected',
-   b.dataset.product===name
-  )
- );
-
+ $$('#favorites button').forEach(b=>b.classList.toggle('selected',b.dataset.product===name));
  $('#price').focus();
 }
 
 function renderProducts(){
- const fav=$('#favorites');
-
- fav.innerHTML='';
-
+ const fav=$('#favorites');fav.innerHTML='';
  products.forEach((name,i)=>{
   const b=document.createElement('button');
-
-  b.type='button';
-  b.dataset.product=name;
+  b.type='button';b.dataset.product=name;
   b.title='clique para usar • duplo clique para editar';
   b.innerHTML=`<span>${name}</span>`;
-
   b.onclick=()=>selectProduct(name);
-
   b.ondblclick=(e)=>{
    e.preventDefault();
-
-   const v=prompt(
-    'editar produto',
-    products[i]
-   );
-
-   if(v&&v.trim()){
-    products[i]=v.trim().toLowerCase();
-    saveProducts()
-   }
+   const v=prompt('editar produto',products[i]);
+   if(v&&v.trim()){products[i]=v.trim().toLowerCase();saveProducts()}
   };
+  fav.appendChild(b)
+ });
+}
 
+function renderProductEditor(){
+ const box=$('#productEditor');box.innerHTML='';
+ products.forEach((name,i)=>{
+  const inp=document.createElement('input');
+  inp.value=name;
+  inp.onchange=()=>{
+   if(inp.value.trim()){products[i]=inp.value.trim().toLowerCase();saveProducts()}
+  };
+  box.appendChild(inp)
+ })
+}
+
+$('#editProducts').onclick=()=>{
+ renderProductEditor();
+ $('#productModal').classList.remove('hidden')
+};
+
+$('#closeProductModal').onclick=()=>$('#productModal').classList.add('hidden');
+
+$('#restoreProducts').onclick=()=>{
+ products=[...catalogForRamo(store.ramo||store.type)];
+ saveProducts()
+};
+
+function clearProduct(){
+ selectedProduct='';
+ $('#selectedProduct').classList.add('hidden');
+ $$('#favorites button').forEach(b=>b.classList.remove('selected'));
+}
+
+function moneyWords(v){
+ if(!v)return'';
+ let s=String(v).trim().replace(/[^\d,\.]/g,'');
+ if(!s)return'';
+ if(s.includes(',')&&s.includes('.'))s=s.replace(/\./g,'').replace(',','.');
+ else s=s.replace(',','.');
+ let n=Number(s);
+ if(!Number.isFinite(n))return'';
+ let c=Math.round(n*100),r=Math.floor(c/100),ct=c%100;
+ const u=['zero','um','dois','três','quatro','cinco','seis','sete','oito','n
+          ````javascript
+const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
+let ads=[], voiceTurn=0, level='medio', playing=false, createMode='normal';
+let capClientReady=false;
+const defaults={musicVol:'75',bedVol:'6',jingles:true,mentionStore:false,fullCurrency:false,open:'08:00',close:'20:00'};
+let store={name:'Açougue Uberaba',type:'Açougue',code:'123456',ramo:'Açougue'};
+
+function admClients(){try{return JSON.parse(localStorage.getItem('capivara_admin_clients')||'[]')}catch(e){return []}}
+function admPackages(){try{return JSON.parse(localStorage.getItem('capivara_ramo_packages_v6')||'{}')}catch(e){return {}}}
+function capClientKey(base){return base+'__'+String(store.code||'SEM_CLIENTE')}
+function capClientAudioKey(id){return 'cliente:'+String(store.code)+':audio:'+id}
+
+function capLoadClient(){
+ if(!store.code)return;
+ capClientReady=true;
+ try{ads=JSON.parse(localStorage.getItem(capClientKey('cap_ads'))||'[]')}catch(e){ads=[]}
+ if(!Array.isArray(ads))ads=[];
+ voiceTurn=+(localStorage.getItem(capClientKey('cap_voice'))||'0');
+ level=localStorage.getItem(capClientKey('cap_level'))||'medio';
+ pendingAudio={};
+ try{capAdCursorV16=0}catch(e){}
+}
+
+const THEMES_V11=["Jazz & Lounge","Sertanejo","MPB & Brasilidades","Flashback","Dance & Pop","Moderno / Hits","Rock & Clássicos","Instrumental & Ambiente","Leve & Relax","Popular & Animada"];
+let selectedThemeV11=localStorage.getItem('capivara_theme_'+store.code)||THEMES_V11[0],pendingThemeV11=null;
+
+function applyAdmStore(c){
+ try{if(window.capCurrentSpokenAudio){window.capCurrentSpokenAudio.pause();window.capCurrentSpokenAudio=null}}catch(e){}
+ try{if(radioAudio){radioAudio.pause();radioAudio=null}}catch(e){}
+ store={name:c.name,type:c.ramo,ramo:c.ramo,code:c.code};
+ capLoadClient();
+ selectedThemeV11=localStorage.getItem('capivara_theme_'+store.code)||THEMES_V11[0];
+ const sn=document.getElementById('storeName');if(sn)sn.textContent=c.name;
+ const pkg=admPackages()[c.ramo]||{};
+ const legacyMap={'Leve':2,'Médio':3,'Frenético':5};
+ const adminCfg=(()=>{try{return JSON.parse(localStorage.getItem('capivara_admin_settings')||'{}')}catch(e){return {}}})();
+ const q=pkg.adsPerBlock||legacyMap[pkg.mode]||adminCfg.defaultAdsPerBlock||3;
+ setTimeout(()=>setAdsPerBlock(q,false),0);
+ renderThemesV11();updateAdmStatus();loadRamoProducts();
+}
+
+function themeMusicV11(theme){
+ try{return JSON.parse(localStorage.getItem('capivara_acervo_v9')||'[]').filter(m=>(m.theme||THEMES_V11[0])===theme)}catch(e){return []}
+}
+
+function chooseThemeV11(theme){
+ if(playing){pendingThemeV11=theme;renderThemesV11();return}
+ selectedThemeV11=theme;
+ localStorage.setItem('capivara_theme_'+store.code,theme);
+ radioIndex=0;renderThemesV11();updateAdmStatus();
+}
+
+function renderThemesV11(){
+ const box=document.getElementById('themeButtonsV11');if(!box)return;
+ box.innerHTML=THEMES_V11.map(t=>`<button class="${selectedThemeV11===t?'active':''} ${pendingThemeV11===t?'pending':''}" onclick="chooseThemeV11('${t.replace("'","\\'")}')">${t}</button>`).join('');
+ const st=document.getElementById('themeStateV11');
+ if(st)st.textContent=pendingThemeV11?`⏳ ${pendingThemeV11} entra quando a música atual terminar.`:`🟢 Tema ativo: ${selectedThemeV11}`;
+}
+
+window.chooseThemeV11=chooseThemeV11;
+
+function updateAdmStatus(){
+ const e=document.getElementById('admSyncInfo'),n=themeMusicV11(selectedThemeV11).length;
+ if(e)e.innerHTML=`✅ ${store.ramo} • <b>${selectedThemeV11}</b> • ${n} música${n===1?'':'s'} no acervo`;
+ renderThemesV11();
+}
+
+const productCatalogs={
+'Açougue':['Picanha','Alcatra','Contrafilé','Patinho','Acém','Costela','Frango','Linguiça','Pernil','Carne Moída','Maminha','Cupim','Coxão Mole','Coxão Duro','Fraldinha'],
+'Supermercado':['Arroz','Feijão','Açúcar','Café','Óleo','Leite','Macarrão','Farinha de Trigo','Carne','Frango','Ovos','Papel Higiênico','Sabão em Pó','Refrigerante','Cerveja'],
+'Farmácia':['Fraldas','Lenços Umedecidos','Shampoo','Condicionador','Sabonete','Desodorante','Protetor Solar','Hidratante','Creme Dental','Escova Dental','Absorvente','Preservativo','Vitaminas','Repelente','Algodão'],
+'Padaria':['Pão Francês','Pão de Queijo','Pão Doce','Bolo','Rosca','Sonho','Croissant','Salgados','Coxinha','Empada','Presunto','Muçarela','Leite','Café','Refrigerante'],
+'Hortifruti':['Banana','Maçã','Laranja','Mamão','Limão','Abacaxi','Manga','Uva','Tomate','Batata','Cebola','Cenoura','Alface','Couve','Ovos'],
+'Pet Shop':['Ração para Cães','Ração para Gatos','Petiscos','Areia para Gatos','Shampoo Pet','Antipulgas','Brinquedos','Coleiras','Guias','Camas','Tapete Higiênico','Comedouros','Sachês','Ossinhos','Banho e Tosa'],
+'Pizzaria':['Pizza Calabresa','Pizza Muçarela','Pizza Portuguesa','Pizza Frango com Catupiry','Pizza Marguerita','Pizza Quatro Queijos','Pizza Bacon','Pizza Carne Seca','Pizza Chocolate','Pizza Doce','Pizza Família','Combo Pizza + Refrigerante','Refrigerante','Borda Recheada','Delivery'],
+'Lanchonete':['X-Burguer','X-Salada','X-Bacon','X-Tudo','Hambúrguer Artesanal','Cachorro-Quente','Misto Quente','Batata Frita','Salgados','Coxinha','Pastel','Açaí','Suco','Refrigerante','Combo'],
+'Restaurante':['Prato Feito','Self-Service','Marmitex','Almoço Executivo','Feijoada','Churrasco','Frango','Peixe','Massas','Saladas','Sobremesa','Suco','Refrigerante','Delivery','Combo do Dia'],
+'Hotel / Pousada':['Diária','Suíte','Quarto Casal','Quarto Família','Café da Manhã','Pacote de Fim de Semana','Pacote Romântico','Feriado','Piscina','Restaurante','Estacionamento','Wi-Fi','Day Use','Evento','Reserva Antecipada'],
+'Roupas':['Camiseta','Camisa','Calça Jeans','Bermuda','Vestido','Blusa','Short','Saia','Conjunto','Jaqueta','Moletom','Roupa Infantil','Moda Íntima','Pijama','Promoção da Coleção'],
+'Calçados':['Tênis','Sapato Social','Sandália','Chinelo','Sapatilha','Bota','Tênis Infantil','Sandália Infantil','Sapato Infantil','Rasteirinha','Scarpin','Mocassim','Papete','Chuteira','Promoção de Calçados'],
+'Material de Construção':['Cimento','Areia','Brita','Tijolo','Telha','Argamassa','Tinta','Piso','Revestimento','Tubo PVC','Caixa d’Água','Ferramentas','Portas','Janelas','Material Elétrico'],
+'Autopeças':['Óleo do Motor','Filtro de Óleo','Filtro de Ar','Pastilha de Freio','Bateria','Palheta','Lâmpada','Correia','Vela de Ignição','Amortecedor','Pneu','Aditivo','Kit Embreagem','Rolamento','Acessórios'],
+'Oficina / Auto Center':['Troca de Óleo','Alinhamento','Balanceamento','Freios','Suspensão','Troca de Pneus','Revisão','Ar-Condicionado','Injeção Eletrônica','Embreagem','Bateria','Escapamento','Correia Dentada','Diagnóstico','Higienização'],
+'Posto / Conveniência':['Gasolina','Etanol','Diesel','Óleo Lubrificante','Aditivo','Calibragem','Lavagem','Café','Água','Refrigerante','Energético','Salgados','Sanduíche','Gelo','Carvão'],
+'Cosméticos / Perfumaria':['Perfume Feminino','Perfume Masculino','Hidratante','Shampoo','Condicionador','Maquiagem','Batom','Base','Protetor Solar','Desodorante','Kit Presente','Creme Facial','Esmalte','Sabonete','Produtos para Cabelo'],
+'Ótica':['Óculos de Grau','Óculos de Sol','Armação Feminina','Armação Masculina','Armação Infantil','Lentes','Lentes Multifocais','Lentes de Contato','Antirreflexo','Filtro de Luz Azul','Clip-on','Exame de Vista','Ajuste de Armação','Kit Limpeza','Promoção de Armações'],
+'Papelaria':['Caderno','Caneta','Lápis','Borracha','Mochila','Estojo','Papel A4','Impressão','Xerox','Material Escolar','Cartolina','Cola','Tesoura','Agenda','Kit Escolar'],
+'Móveis / Eletro':['Sofá','Cama','Colchão','Guarda-Roupa','Mesa','Cadeira','Rack','Geladeira','Fogão','Máquina de Lavar','Televisão','Micro-ondas','Ventilador','Air Fryer','Liquidificador'],
+'Agropecuária / Rações':['Ração para Cães','Ração para Gatos','Ração para Aves','Ração para Equinos','Ração para Bovinos','Milho','Sal Mineral','Sementes','Adubo','Ferramentas','Bebedouro','Comedouro','Produtos Veterinários','Selaria','Acessórios Rurais'],
+'Distribuidora de Bebidas':['Água','Refrigerante','Suco','Energético','Cerveja','Gelo','Água com Gás','Isotônico','Chá Gelado','Tônica','Carvão','Copos Descartáveis','Combo para Festa','Fardo de Água','Fardo de Refrigerante'],
+'Utilidades / Variedades':['Panelas','Potes','Copos','Pratos','Talheres','Baldes','Vassouras','Produtos de Limpeza','Organizadores','Toalhas','Tapetes','Ferramentas','Brinquedos','Material Escolar','Itens para Cozinha']
+};
+
+function normRamo(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase()}
+function catalogForRamo(r){const k=Object.keys(productCatalogs).find(x=>normRamo(x)===normRamo(r));return k?productCatalogs[k].map(x=>x.toLowerCase()):[]}
+function productKey(){return 'cap_products_'+String(store.code||'semcodigo')}
+let products=catalogForRamo(store.ramo||store.type),selectedProduct='';
+
+function loadRamoProducts(){
+ let saved=null;try{saved=JSON.parse(localStorage.getItem(productKey())||'null')}catch(e){}
+ const base=catalogForRamo(store.ramo||store.type);
+ products=Array.isArray(saved)&&saved.length===15?saved:[...base];
+ localStorage.setItem(productKey(),JSON.stringify(products));
+ if(typeof renderProducts==='function')renderProducts();
+ if(typeof renderProductEditor==='function')renderProductEditor();
+}
+
+function saveProducts(){localStorage.setItem(productKey(),JSON.stringify(products));renderProducts();renderProductEditor()}
+
+function selectProduct(name){
+ selectedProduct=name;
+ $('#selectedName').textContent=name;
+ $('#selectedProduct').classList.remove('hidden');
+ $$('#favorites button').forEach(b=>b.classList.toggle('selected',b.dataset.product===name));
+ $('#price').focus();
+}
+
+function renderProducts(){
+ const fav=$('#favorites');fav.innerHTML='';
+ products.forEach((name,i)=>{
+  const b=document.createElement('button');
+  b.type='button';b.dataset.product=name;
+  b.title='clique para usar • duplo clique para editar';
+  b.innerHTML=`<span>${name}</span>`;
+  b.onclick=()=>selectProduct(name);
+  b.ondblclick=(e)=>{
+   e.preventDefault();
+   const v=prompt('editar produto',products[i]);
+   if(v&&v.trim()){products[i]=v.trim().toLowerCase();saveProducts()}
+  };
   fav.appendChild(b)
  })
 }
 
 function renderProductEditor(){
- const box=$('#productEditor');
-
- box.innerHTML='';
-
+ const box=$('#productEditor');box.innerHTML='';
  products.forEach((name,i)=>{
   const row=document.createElement('div');
-
   row.className='product-edit-row';
-
-  row.innerHTML=
-   `<b>${i+1}</b><input value="${name.replace(/"/g,'&quot;')}" maxlength="35">`;
-
+  row.innerHTML=`<b>${i+1}</b><input value="${name.replace(/"/g,'&quot;')}" maxlength="35">`;
   const inp=row.querySelector('input');
-
   inp.onchange=()=>{
    const v=inp.value.trim().toLowerCase();
-
-   if(v){
-    products[i]=v;
-    saveProducts()
-   }
+   if(v){products[i]=v;saveProducts()}
   };
-
   box.appendChild(row)
  })
 }
 
 $('#clearProduct').onclick=()=>{
  selectedProduct='';
-
  $('#selectedProduct').classList.add('hidden');
  $('#price').value='';
-
- $$('#favorites button').forEach(
-  b=>b.classList.remove('selected')
- )
+ $$('#favorites button').forEach(b=>b.classList.remove('selected'))
 };
 
-$('#resetProducts').onclick=()=>{
- products=catalogForRamo(store.ramo||store.type);
- saveProducts()
-};
+$('#resetProducts').onclick=()=>{products=catalogForRamo(store.ramo||store.type);saveProducts()};
 
 $('#price').addEventListener('input',e=>{
- let digits=e.target.value
-  .replace(/\D/g,'')
-  .slice(0,8);
-
- if(!digits){
-  e.target.value='';
-  return
- }
-
+ let digits=e.target.value.replace(/\D/g,'').slice(0,8);
+ if(!digits){e.target.value='';return}
  let n=parseInt(digits,10);
-
- e.target.value=(n/100).toLocaleString(
-  'pt-BR',
-  {
-   minimumFractionDigits:2,
-   maximumFractionDigits:2
-  }
- )
+ e.target.value=(n/100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})
 });
 
-renderProducts();
-renderProductEditor();
+renderProducts();renderProductEditor();
 
-function dayKey(ts=Date.now()){
- return new Date(ts).toLocaleDateString('en-CA')
-}
+function dayKey(ts=Date.now()){return new Date(ts).toLocaleDateString('en-CA')}
 
 function capLimits(){
  let c={};
-
- try{
-  c=JSON.parse(
-   localStorage.getItem('capivara_admin_settings')||'{}'
-  )
- }catch{}
-
+ try{c=JSON.parse(localStorage.getItem('capivara_admin_settings')||'{}')}catch{}
  return {
-  daily:Math.max(
-   1,
-   parseInt(c.dailyLimit||15,10)
-  ),
-  weekly:Math.max(
-   1,
-   parseInt(c.weeklyLimit||75,10)
-  ),
-  top:Math.max(
-   0,
-   parseInt(c.topDailyLimit??1,10)
-  )
+  daily:Math.max(1,parseInt(c.dailyLimit||15,10)),
+  weekly:Math.max(1,parseInt(c.weeklyLimit||75,10)),
+  top:Math.max(0,parseInt(c.topDailyLimit??1,10))
  }
 }
 
 function capWeekKey(){
- const d=new Date(),
- x=new Date(
-  Date.UTC(
-   d.getFullYear(),
-   d.getMonth(),
-   d.getDate()
-  )
- );
-
+ const d=new Date(),x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
  const day=x.getUTCDay()||7;
-
- x.setUTCDate(
-  x.getUTCDate()+4-day
- );
-
- const y0=new Date(
-  Date.UTC(
-   x.getUTCFullYear(),
-   0,
-   1
-  )
- );
-
- return x.getUTCFullYear()+
-  '-W'+
-  String(
-   Math.ceil(
-    (((x-y0)/86400000)+1)/7
-   )
-  ).padStart(2,'0')
+ x.setUTCDate(x.getUTCDate()+4-day);
+ const y0=new Date(Date.UTC(x.getUTCFullYear(),0,1));
+ return x.getUTCFullYear()+'-W'+String(Math.ceil((((x-y0)/86400000)+1)/7)).padStart(2,'0')
 }
 
 function weeklyUsage(){
- const k='cap_weekly_usage_'+store.code,
- w=JSON.parse(localStorage.getItem(k)||'{}'),
- wk=capWeekKey();
-
- return w.week===wk
-  ?w
-  :{
-    week:wk,
-    count:0
-   }
+ const k='cap_weekly_usage_'+store.code,w=JSON.parse(localStorage.getItem(k)||'{}'),wk=capWeekKey();
+ return w.week===wk?w:{week:wk,count:0}
 }
-
-function weekCreated(){
- return weeklyUsage().count
-}
+function weekCreated(){return weeklyUsage().count}
 
 function usage(){
- const u=JSON.parse(
-  localStorage.getItem(
-   capClientKey('cap_daily_usage')
-  )||'{}'
- );
-
- if(u.day!==dayKey()){
-  return {
-   day:dayKey(),
-   count:0,
-   topCount:0
-  }
- }
-
- if(u.topCount==null){
-  u.topCount=u.top?1:0
- }
-
+ const u=JSON.parse(localStorage.getItem(capClientKey('cap_daily_usage'))||'{}');
+ if(u.day!==dayKey())return {day:dayKey(),count:0,topCount:0};
+ if(u.topCount==null)u.topCount=u.top?1:0;
  return u
 }
 
-function todayCreated(){
- return usage().count
-}
-
-function topCreatedToday(){
- return usage().topCount||0
-}
+function todayCreated(){return usage().count}
+function topCreatedToday(){return usage().topCount||0}
 
 function registerUse(isTop){
  const u=usage();
-
  u.count=(u.count||0)+1;
-
- if(isTop){
-  u.topCount=(u.topCount||0)+1
- }
-
+ if(isTop)u.topCount=(u.topCount||0)+1;
  delete u.top;
-
- localStorage.setItem(
-  capClientKey('cap_daily_usage'),
-  JSON.stringify(u)
- );
-
+ localStorage.setItem(capClientKey('cap_daily_usage'),JSON.stringify(u));
  const w=weeklyUsage();
-
  w.count=(w.count||0)+1;
-
- localStorage.setItem(
-  'cap_weekly_usage_'+store.code,
-  JSON.stringify(w)
- )
+ localStorage.setItem('cap_weekly_usage_'+store.code,JSON.stringify(w))
 }
 
 function refreshQuota(){
- const lim=capLimits(),
- used=todayCreated(),
- full=
-  used>=lim.daily||
-  weekCreated()>=lim.weekly,
- topUsed=topCreatedToday(),
- topFull=topUsed>=lim.top;
-
+ const lim=capLimits(),used=todayCreated(),full=used>=lim.daily||weekCreated()>=lim.weekly,topUsed=topCreatedToday(),topFull=topUsed>=lim.top;
  $('#dailyCount').textContent=used;
-
- $('#suggest').classList.toggle(
-  'quota-full',
-  full
- );
-
- $('#topDay').classList.toggle(
-  'quota-full',
-  full||topFull
- );
-
- $('#topDay').textContent=
-  topFull
-   ?'✓ LIMITE TOP ATINGIDO'
-   :'🔥 TOP DO DIA';
+ $('#suggest').classList.toggle('quota-full',full);
+ $('#topDay').classList.toggle('quota-full',full||topFull);
+ $('#topDay').textContent=topFull?'✓ LIMITE TOP ATINGIDO':'🔥 TOP DO DIA';
 }
 
 function setCreateMode(mode){
  createMode=mode;
-
  const top=mode==='top';
-
- $('#topStatus').classList.toggle(
-  'hidden',
-  !top
- );
-
- $('#topDay').classList.toggle(
-  'active',
-  top
- );
+ $('#topStatus').classList.toggle('hidden',!top);
+ $('#topDay').classList.toggle('active',top);
 }
 
 $('#topDay').onclick=()=>{
- if(todayCreated()>=capLimits().daily){
-  alert('O limite diário de anúncios foi atingido.');
-  return
- }
-
- if(weekCreated()>=capLimits().weekly){
-  alert('O limite semanal de anúncios foi atingido.');
-  return
- }
-
- if(topCreatedToday()>=capLimits().top){
-  alert('O limite diário de TOP foi atingido.');
-  return
- }
-
- setCreateMode(
-  createMode==='top'
-   ?'normal'
-   :'top'
- );
+ if(todayCreated()>=capLimits().daily){alert('O limite diário de anúncios foi atingido.');return}
+ if(weekCreated()>=capLimits().weekly){alert('O limite semanal de anúncios foi atingido.');return}
+ if(topCreatedToday()>=capLimits().top){alert('O limite diário de TOP foi atingido.');return}
+ setCreateMode(createMode==='top'?'normal':'top');
 };
 
 function saveAds(){
  if(!capClientReady)return;
-
- localStorage.setItem(
-  capClientKey('cap_ads'),
-  JSON.stringify(ads)
- );
-
+ localStorage.setItem(capClientKey('cap_ads'),JSON.stringify(ads));
  renderAds()
 }
 
 function renderAds(){
- const box=$('#ads');
-
- box.innerHTML='';
-
+ const box=$('#ads');box.innerHTML='';
  const now=Date.now();
-
- ads=ads.filter(
-  a=>!a.exp||a.exp>now
- );
-
- if(capClientReady){
-  localStorage.setItem(
-   capClientKey('cap_ads'),
-   JSON.stringify(ads)
-  )
- }
-
+ ads=ads.filter(a=>!a.exp||a.exp>now);
+ if(capClientReady)localStorage.setItem(capClientKey('cap_ads'),JSON.stringify(ads));
  refreshQuota();
-
- if(!ads.length){
-  box.innerHTML=
-   '<div class="empty">Nenhum anúncio ativo.</div>';
- }
-
+ if(!ads.length)box.innerHTML='<div class="empty">Nenhum anúncio ativo.</div>';
  ads.forEach((a,i)=>{
   let d=document.createElement('div');
-
-  d.className=
-   'ad'+
-   (a.top?' top-ad':'');
-
-  const label=
-   a.label||
-   a.product||
-   'anúncio';
-
-  d.innerHTML=
-   `<div class="copy"><b>${a.top?'<span class="top-badge">🔥 TOP DO DIA</span>':''}${label}</b><small>${a.voice} • ${a.paused?'Pausado':'Na programação'} • ${a.exp?new Date(a.exp).toLocaleDateString('pt-BR'):'Sempre'}</small><div class="ad-hidden-text hidden">${a.text||''}</div></div><button data-v="${i}">ver texto</button><button data-p="${i}">${a.paused?'▶':'⏸'}</button><button data-d="${i}">🗑</button>`;
-
+  d.className='ad'+(a.top?' top-ad':'');
+  const label=a.label||a.product||'anúncio';
+  d.innerHTML=`<div class="copy"><b>${a.top?'<span class="top-badge">🔥 TOP DO DIA</span>':''}${label}</b><small>${a.voice} • ${a.paused?'Pausado':'Na programação'} • ${a.exp?new Date(a.exp).toLocaleDateString('pt-BR'):'Sempre'}</small><div class="ad-hidden-text hidden">${a.text||''}</div></div><button data-v="${i}">ver texto</button><button data-p="${i}">${a.paused?'▶':'⏸'}</button><button data-d="${i}">🗑</button>`;
   box.appendChild(d)
  });
-
- $$('[data-v]').forEach(
-  b=>b.onclick=()=>{
-   const el=b.closest('.ad')
-    .querySelector('.ad-hidden-text');
-
-   el.classList.toggle('hidden');
-
-   b.textContent=
-    el.classList.contains('hidden')
-     ?'ver texto'
-     :'ocultar'
-  }
- );
-
- $$('[data-p]').forEach(
-  b=>b.onclick=()=>{
-   ads[b.dataset.p].paused=
-    !ads[b.dataset.p].paused;
-
-   saveAds();
-   renderCreatedAudiosV19()
-  }
- );
-
- $$('[data-d]').forEach(
-  b=>b.onclick=()=>{
-   ads.splice(
-    b.dataset.d,
-    1
-   );
-
-   saveAds();
-   renderCreatedAudiosV19()
-  }
- );
+ $$('[data-v]').forEach(b=>b.onclick=()=>{
+  const el=b.closest('.ad').querySelector('.ad-hidden-text');
+  el.classList.toggle('hidden');
+  b.textContent=el.classList.contains('hidden')?'ver texto':'ocultar'
+ });
+ $$('[data-p]').forEach(b=>b.onclick=()=>{
+  ads[b.dataset.p].paused=!ads[b.dataset.p].paused;
+  saveAds();renderCreatedAudiosV19()
+ });
+ $$('[data-d]').forEach(b=>b.onclick=()=>{
+  ads.splice(b.dataset.d,1);
+  saveAds();renderCreatedAudiosV19()
+ });
 }
 
-const CAP_SERVER_V50=
- 'https://capivara-radio-server.onrender.com';
+const CAP_SERVER_V50='https://capivara-radio-server.onrender.com';
 
 async function capServerClientV50(code){
- const ctrl=new AbortController(),
- timer=setTimeout(
-  ()=>ctrl.abort(),
-  20000
- );
-
+ const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),20000);
  try{
-  const r=await fetch(
-   CAP_SERVER_V50+
-   '/api/client/'+
-   encodeURIComponent(code),
-   {
-    signal:ctrl.signal,
-    headers:{
-     'Accept':'application/json'
-    }
-   }
-  );
-
-  let data=null;
-
-  try{
-   data=await r.json()
-  }catch(e){}
-
-  if(r.status===404){
-   return null
-  }
-
-  if(!r.ok){
-   throw new Error(
-    'Servidor '+r.status
-   )
-  }
-
-  const c=
-   data?.client||
-   data?.data||
-   data;
-
-  if(!c||!(c.code||c.codigo)){
-   return null
-  }
-
+  const r=await fetch(CAP_SERVER_V50+'/api/client/'+encodeURIComponent(code),{
+   signal:ctrl.signal,
+   headers:{'Accept':'application/json'}
+  });
+  let data=null;try{data=await r.json()}catch(e){}
+  if(r.status===404)return null;
+  if(!r.ok)throw new Error('Servidor '+r.status);
+  const c=data?.client||data?.data||data;
+  if(!c||!(c.code||c.codigo))return null;
   return {
-   name:
-    c.name||
-    c.nome||
-    c.storeName||
-    'Loja',
-
-   ramo:
-    c.ramo||
-    c.activity||
-    c.segment||
-    'Açougue',
-
-   code:String(
-    c.code||
-    c.codigo
-   ),
-
-   active:
-    c.active!==false&&
-    c.ativo!==false
+   name:c.name||c.nome||c.storeName||'Loja',
+   ramo:c.ramo||c.activity||c.segment||'Açougue',
+   code:String(c.code||c.codigo),
+   active:c.active!==false&&c.ativo!==false
   };
-
- }finally{
-  clearTimeout(timer)
- }
+ }finally{clearTimeout(timer)}
 }
 
 $('#enter').onclick=async()=>{
- const code=$('#code').value.trim(),
- btn=$('#enter');
-
+ const code=$('#code').value.trim(),btn=$('#enter');
  if(!/^\d{6}$/.test(code)){
-  $('#loginMsg').textContent=
-   'Digite o código de 6 dígitos';
-
-  return
+  $('#loginMsg').textContent='Digite o código de 6 dígitos';return
  }
-
  const old=btn.textContent;
-
- btn.disabled=true;
- btn.textContent='CONECTANDO...';
- $('#loginMsg').textContent='';
-
+ btn.disabled=true;btn.textContent='CONECTANDO...';$('#loginMsg').textContent='';
  try{
-  const c=
-   await capServerClientV50(code);
-
-  if(!c){
-   $('#loginMsg').textContent=
-    'Código não encontrado';
-
-   return
-  }
-
-  if(c.active===false){
-   $('#loginMsg').textContent=
-    'Rádio bloqueada pelo administrador';
-
-   return
-  }
-
+  const c=await capServerClientV50(code);
+  if(!c){$('#loginMsg').textContent='Código não encontrado';return}
+  if(c.active===false){$('#loginMsg').textContent='Rádio bloqueada pelo administrador';return}
   applyAdmStore(c);
-
   $('#login').classList.add('hidden');
   $('#app').classList.remove('hidden');
-
-  renderAds();
-  renderCreatedAudiosV19();
-
+  renderAds();renderCreatedAudiosV19();
  }catch(e){
   console.error(e);
-
-  $('#loginMsg').textContent=
-   e.name==='AbortError'
-    ?'Servidor demorou para responder. Tente novamente.'
-    :'Não foi possível conectar ao servidor';
-
+  $('#loginMsg').textContent=e.name==='AbortError'?'Servidor demorou para responder. Tente novamente.':'Não foi possível conectar ao servidor';
  }finally{
-  btn.disabled=false;
-  btn.textContent=old
+  btn.disabled=false;btn.textContent=old
  }
 };
 
-$$('.tab').forEach(
- b=>b.onclick=()=>{
-  $$('.tab').forEach(
-   x=>x.classList.remove('active')
-  );
-
-  $$('.page').forEach(
-   x=>x.classList.remove('active')
-  );
-
-  b.classList.add('active');
-
-  $('#'+b.dataset.tab)
-   .classList.add('active')
- }
-);
+$$('.tab').forEach(b=>b.onclick=()=>{
+ $$('.tab').forEach(x=>x.classList.remove('active'));
+ $$('.page').forEach(x=>x.classList.remove('active'));
+ b.classList.add('active');
+ $('#'+b.dataset.tab).classList.add('active')
+});
 
 function promptForGemini(q){
- const mention=
-  $('#mentionStore').checked,
- full=
-  $('#fullCurrency').checked,
- top=
-  createMode==='top';
-
+ const mention=$('#mentionStore').checked,full=$('#fullCurrency').checked,top=createMode==='top';
  return `você é um redator de rádio comercial brasileiro especialista em ${store.type}. crie uma chamada natural e forte para locução. ${top?'este é o anúncio top do dia: dê mais impacto, urgência e exclusividade, sem exageros enganosos.':''} a chamada deve ter no máximo 150 caracteres. escreva em letras minúsculas. não use emojis. ${mention?`pode mencionar o nome ${store.name}.`:'não mencione o nome do estabelecimento.'} transforme números e preços em palavras para a fala. ${full?'em preços, fale reais e centavos por extenso.':'em preços, não diga as palavras reais ou centavos; exemplo: 4,77 deve virar quatro e setenta e sete.'} informação do cliente: ${q}. responda somente com a frase, sem aspas e sem explicações.`
 }
 
 async function createTexts(){
+ if(todayCreated()>=capLimits().daily){alert('O limite diário de anúncios foi atingido.');return}
+ if(weekCreated()>=capLimits().weekly){alert('O limite semanal de anúncios foi atingido.');return}
+ if(createMode==='top'&&topCreatedToday()>=capLimits().top){alert('O limite diário de TOP foi atingido.');return}
+
+ let q=$('#brief').value.trim();
+ if(selectedProduct){
+  const price=$('#price').value.trim();
+  q=(q?q+'; ':'')+selectedProduct+(price?'; preço '+price:'');
+ }
+ if(!q)return;
+
+ const btn=$('#suggest');
+ if(btn){btn.disabled=true;btn.textContent='CRIANDO...'}
+
+ try{
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),20000);
+  let r;
+  try{
+   r=await fetch(CAP_SERVER_V50+'/api/ai/generate',{
+    method:'POST',
+    signal:ctrl.signal,
+    headers:{'Content-Type':'application/json','Accept':'application/json'},
+    body:JSON.stringify({
+     prompt:promptForGemini(q),
+     text:q,
+     pedido:q,
+     ramo:store?.ramo||store?.type||'',
+     produto:selectedProduct||'',
+     preco:($('#price')?.value||'').trim(),
+     top:createMode==='top',
+     mentionStore:$('#mentionStore')?.checked===true,
+     fullCurrency:$('#fullCurrency')?.checked===true,
+     storeName:store?.name||'',
+     maxChars:150
+    })
+   });
+  }finally{clearTimeout(timer)}
+
+  let data={};try{data=await r.json()}catch{}
+  if(!r.ok)throw new Error(data?.error||data?.message||('Servidor '+r.status));
+
+  let raw=data?.text||data?.frase||data?.response||data?.generated_text||data?.data?.text||'';
+  raw=String(raw||'').trim()
+   .replace(/^```(?:json)?\s*/i,'')
+   .replace(/```$/,'')
+   .trim()
+   .replace(/^["']|["']$/g,'');
+
+  if(!raw)throw new Error('O servidor não retornou a frase.');
+
+  const generated=raw.toLowerCase().slice(0,150);
+  if($('#text1'))$('#text1').value=generated;
+  $('#brief').value=generated;
+  if($('#suggestions'))$('#suggestions').classList.add('hidden');
+  updateCounts();
+  document.body.dataset.v24stage='phrase';
+
+ }catch(e){
+  console.error(e);
+  alert('Não foi possível criar agora.\n\n'+(e.name==='AbortError'?'Servidor demorou para responder.':e.message));
+ }finally{
+  if(btn){btn.disabled=false;btn.textContent='✨ CRIAR ANÚNCIO'}
+ }
+}
+
+$('#suggest').onclick=createTexts;
+
+function updateCounts(){}
+
+['1','2'].forEach(n=>$('#text'+n).oninput=()=>{
+ let el=$('#text'+n);
+ el.value=el.value.toLowerCase().slice(0,150);
+ updateCounts()
+});
+
+let pendingAudio={};
+
+function capAdDb(){
+ return new Promise((ok,no)=>{
+  const r=indexedDB.open('CapivaraAdsV19',1);
+  r.onupgradeneeded=()=>{
+   if(!r.result.objectStoreNames.contains('audio'))r.result.createObjectStore('audio')
+  };
+  r.onsuccess=()=>ok(r.result);
+  r.onerror=()=>no(r.error)
+ })
+}
+
+async function capSaveAdBlob(key,blob){
+ const d=await capAdDb();
+ return new Promise((ok,no)=>{
+  const r=d.transaction('audio','readwrite').objectStore('audio').put(blob,key);
+  r.onsuccess=()=>ok(true);
+  r.onerror=()=>no(r.error)
+ })
+}
+
+async function capGetAdBlob(key){
+ const d=await capAdDb();
+ return new Promise((ok,no)=>{
+  const r=d.transaction('audio').objectStore('audio').get(key);
+  r.onsuccess=()=>ok(r.result);
+  r.onerror=()=>no(r.error)
+ })
+}
+
+function capAudioLabel(){
+ const product=(selectedProduct||'anúncio').trim(),
+ price=($('#price')?.value||'').trim();
+ return price?product+' • '+price:product
+}
+
+async function capGenerateAudioDirectV201(text){
+ text=String(text||'').trim().toLowerCase().slice(0,150);
+ if(!text)throw new Error('O texto do anúncio está vazio.');
+
+ const last=[...ads].reverse().find(a=>a&&a.voice);
+ const lastWasMale=last&&/mascul|homem/i.test(last.voice||'');
+ const lastWasFemale=last&&/femin|mulher/i.test(last.voice||'');
+ const female=lastWasMale?true:lastWasFemale?false:false;
+ const voiceName=female?'Voz feminina':'Voz masculina';
+
+ const r=await fetch(CAP_SERVER_V50+'/api/voice/generate',{
+  method:'POST',
+  headers:{
+   'Content-Type':'application/json',
+   'Accept':'audio/mpeg'
+  },
+  body:JSON.stringify({
+   text,
+   voiceType:female?'adFemale':'adMale'
+  })
+ });
+
+ if(!r.ok){
+  let detail='';
+  try{
+   const ct=r.headers.get('content-type')||'';
+   detail=ct.includes('application/json')
+    ?JSON.stringify(await r.json())
+    :await r.text()
+  }catch{}
+  throw new Error('Servidor de voz '+r.status+(detail?' — '+detail.slice(0,180):''));
+ }
+
+ const blob=await r.blob();
+ if(!blob||!blob.size)throw new Error('O servidor não retornou áudio.');
+
+ return {
+  text,
+  voice:voiceName,
+  blob,
+  top:createMode==='top',
+  label:capAudioLabel(),
+  product:selectedProduct||'',
+  price:($('#price')?.value||'').trim()
+ };
+}
+
+async function generateVoice(n,btn){
+ let text=$('#text'+n).value.trim().toLowerCase().slice(0,150);
+ if(!text)return;
+
+ btn.disabled=true;
+ btn.textContent='GERANDO...';
+
+ try{
+  const p=await capGenerateAudioDirectV201(text);
+
+  if(pendingAudio[n]?.url)URL.revokeObjectURL(pendingAudio[n].url);
+
+  const url=URL.createObjectURL(p.blob);
+  pendingAudio[n]={...p,url};
+
+  $('#audio'+n).src=url;
+  $('#actions'+n).classList.remove('hidden');
+  btn.textContent='✓ ÁUDIO PRONTO';
+
+ }catch(e){
+  console.error(e);
+  alert('ERRO AO GERAR ÁUDIO\n\n'+e.message);
+  btn.textContent='🎙 GERAR ÁUDIO';
+ }finally{
+  btn.disabled=false
+ }
+}
+
+$$('[data-gen]').forEach(b=>b.onclick=()=>generateVoice(b.dataset.gen,b));
+
+function playTopSting(){
+ try{
+  const C=window.AudioContext||window.webkitAudioContext,
+  ctx=new C(),
+  g=ctx.createGain();
+
+  g.connect(ctx.destination);
+  g.gain.setValueAtTime(.0001,ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(.18,ctx.currentTime+.03);
+  g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+1.05);
+
+  [[392,0],[523.25,.18],[659.25,.36],[784,.58]].forEach(([f,t])=>{
+   const o=ctx.createOscillator();
+   o.type='sine';
+   o.frequency.value=f;
+   o.connect(g);
+   o.start(ctx.currentTime+t);
+   o.stop(ctx.currentTime+t+.32)
+  });
+
+  return new Promise(r=>setTimeout(()=>{
+   ctx.close();r()
+  },1120))
+ }catch{
+  return Promise.resolve()
+ }
+}
+
+$$('[data-preview]').forEach(b=>b.onclick=async()=>{
+ const n=b.dataset.preview,a=$('#audio'+n);
+ if(!a.src)return;
+ if(pendingAudio[n]?.top)await playTopSting();
+ a.currentTime=0;
+ a.play().catch(()=>alert('Não foi possível tocar a prévia.'));
+});
+
+$$('[data-queue]').forEach(b=>b.onclick=async()=>{
+ const n=b.dataset.queue,p=pendingAudio[n];
+ if(!p)return;
+
+ let days=+$('#duration').value,
+ exp=days?Date.now()+days*86400000:null;
+
+ if(todayCreated()>=capLimits().daily){
+  alert('O limite diário de anúncios foi atingido.');return
+ }
+ if(weekCreated()>=capLimits().weekly){
+  alert('O limite semanal de anúncios foi atingido.');return
+ }
+ if(p.top&&topCreatedToday()>=capLimits().top){
+  alert('O limite diário de TOP foi atingido.');return
+ }
+
+ const id='ad_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+ audioKey=capClientAudioKey(id);
+
+ try{
+  await capSaveAdBlob(audioKey,p.blob)
+ }catch(e){
+  alert('Não foi possível salvar o áudio.');return
+ }
+
+ ads.push({
+  id,
+  label:p.label,
+  product:p.product,
+  price:p.price,
+  text:p.text,
+  voice:p.voice,
+  paused:false,
+  exp,
+  audioKey,
+  top:!!p.top,
+  createdDay:dayKey()
+ });
+
+ registerUse(!!p.top);
+
+ localStorage.setItem(
+  capClientKey('cap_voice_queued_count'),
+  String(+(localStorage.getItem(capClientKey('cap_voice_queued_count'))||0)+1)
+ );
+
+ pendingAudio[n]=null;
+ $('#actions'+n).classList.add('hidden');
+ $('#audio'+n).removeAttribute('src');
+
+ b.textContent='✓ NA PROGRAMAÇÃO';
+ setTimeout(()=>b.textContent='➕ MANDAR PRA FILA',900);
+
+ saveAds();
+ renderCreatedAudiosV19();
+ capResetCreateV20();
+ capStageV21('start');
+
+ if(p.top)setCreateMode('normal');
+});
+
+function setAdsPerBlock(v,save=true){
+ const n=Math.max(1,parseInt(v||'3',10));
+ const el=$('#adsPerBlock');
+ if(el)el.value=n;
+ if(save)localStorage.setItem('cap_ads_per_block_'+store.code,n);
+
+ $('#cycle').textContent=`🎵 Música → 🔊 Entrada → 📢 ${n} anúncio${n>1?'s':''} → 🔊 Saída → 🎵 Música${topCreatedToday()?' • 🔥 TOP entra após a música, com vinheta exclusiva':''}`;
+}
+
+const adsBlockInput=$('#adsPerBlock');
+
+if(adsBlockInput){
+ adsBlockInput.oninput=()=>setAdsPerBlock(adsBlockInput.value,true);
+
+ const c=(()=>{
+  try{return JSON.parse(localStorage.getItem('capivara_admin_settings')||'{}')}
+  catch(e){return {}}
+ })();
+
+ setAdsPerBlock(
+  localStorage.getItem('cap_ads_per_block_'+store.code)||
+  c.defaultAdsPerBlock||
+  3,
+  false
+ );
+}
+
+let radioAudio=null,radioIndex=0;
+
+function acervoDb(){
+ return new Promise((ok,no)=>{
+  const r=indexedDB.open('CapivaraAcervoV9',1);
+  r.onupgradeneeded=()=>{
+   if(!r.result.objectStoreNames.contains('files'))r.result.createObjectStore('files')
+  };
+  r.onsuccess=()=>ok(r.result);
+  r.onerror=()=>no(r.error)
+ })
+}
+
+async function acervoBlob(id){
+ const d=await acervoDb();
+ return new Promise((ok,no)=>{
+  const r=d.transaction('files').objectStore('files').get('music:'+id);
+  r.onsuccess=()=>ok(r.result);
+  r.onerror=()=>no(r.error)
+ })
+}
+
+async function playNextAdmMusic(){
+ if(!playing)return;
+
+ if(pendingThemeV11){
+  selectedThemeV11=pendingThemeV11;
+  pendingThemeV11=null;
+  localStorage.setItem('capivara_theme_'+store.code,selectedThemeV11);
+  radioIndex=0;
+  renderThemesV11();
+  updateAdmStatus()
+ }
+
+ const list=themeMusicV11(selectedThemeV11);
+
+ if(!list.length){
+  $('#nowTitle').textContent='Tema sem músicas';
+  $('#nowSub').textContent='Escolha outro tema ou aguarde o ADM adicionar músicas.';
+  playing=false;
+  syncPlayUi();
+  return
+ }
+
+ if(radioIndex>=list.length)radioIndex=0;
+
+ const meta=list[radioIndex++],
+ blob=await acervoBlob(meta.id);
+
+ if(!blob){
+  $('#nowTitle').textContent='Música indisponível neste navegador';
+  $('#nowSub').textContent='Na versão online, os arquivos virão do servidor.';
+  setTimeout(playNextAdmMusic,1000);
+  return
+ }
+
+ if(radioAudio){
+  radioAudio.pause();
+  if(radioAudio._u)URL.revokeObjectURL(radioAudio._u)
+ }
+
+ const u=URL.createObjectURL(blob);
+ radioAudio=new Audio(u);
+ radioAudio._u=u;
+ radioAudio.volume=(+($('#musicVol').value||75))/100;
+
+ $('#nowTitle').textContent=meta.name;
+ $('#nowSub').textContent=`🎵 ${selectedThemeV11} • ${store.name}`;
+
+ radioAudio.onended=()=>{
+  URL.revokeObjectURL(u);
+  capRadioAfterMusicV16()
+ };
+
+ radioAudio.play().catch(()=>{
+  playing=false;
+  syncPlayUi();
+  alert('Clique novamente em INICIAR RÁDIO.')
+ });
+}
+
+function syncPlayUi(){
+ $('#play').textContent=playing?'⏸ PAUSAR RÁDIO':'▶ INICIAR RÁDIO';
+ $('#onair').textContent=playing?'● NO AR':'● PAUSADA';
+ $('#onair').style.color=playing?'#16813c':'#8b9890'
+}
+
+$('#play').onclick=()=>{
+ playing=!playing;
+ syncPlayUi();
+
+ if(playing){
+  playNextAdmMusic()
+ }else{
+  if(radioAudio)radioAudio.pause();
+  $('#nowTitle').textContent='Rádio pausada';
+  $('#nowSub').textContent='Escolha um tema e inicie quando quiser'
+ }
+};
+
+window.addEventListener('storage',()=>{updateAdmStatus()});
+
+['musicVol','bedVol','open','close'].forEach(id=>{
+ let v=localStorage.getItem('cap_'+id);
+ if(v!==null)$('#'+id).value=v;
+ $('#'+id).oninput=()=>localStorage.setItem('cap_'+id,$('#'+id).value)
+});
+
+['jingles','mentionStore','fullCurrency'].forEach(id=>{
+ let v=localStorage.getItem('cap_'+id);
+ $('#'+id).checked=v===null?defaults[id]:v==='true';
+ $('#'+id).onchange=()=>localStorage.setItem('cap_'+id,$('#'+id).checked)
+});
+
+$$('[data-reset]').forEach(b=>b.onclick=()=>{
+ let id=b.dataset.reset;
+ if(typeof defaults[id]==='boolean'){
+  $('#'+id).checked=defaults[id];
+  localStorage.setItem('cap_'+id,defaults[id])
+ }else{
+  $('#'+id).value=(id==='bedVol'?'6':defaults[id]);
+  localStorage.setItem('cap_'+id,$('#'+id).value);
+  $('#'+id).dispatchEvent(new Event('input',{bubbles:true}))
+ }
+});
+
+$('#restore').onclick=()=>{
+ Object.entries(defaults).forEach(([k,v])=>{
+  if(typeof v==='boolean')$('#'+k).checked=v;
+  else $('#'+k).value=v;
+  localStorage.setItem('cap_'+k,v)
+ });
+
+ setAdsPerBlock((()=>{
+  try{
+   return JSON.parse(localStorage.getItem('capivara_admin_settings')||'{}').defaultAdsPerBlock||3
+  }catch(e){
+   return 3
+  }
+ })(),true)
+};
+
+renderAds();
+refreshQuota();
+updateCounts();
+
+let capPendingDecision=false;
+
+function capButtons(){
+ return [...document.querySelectorAll('button')]
+}
+
+function capFindButton(words){
+ const W=words.map(x=>x.toLowerCase());
+ return capButtons().find(b=>W.some(w=>(b.textContent||'').toLowerCase().includes(w)))
+}
+
+function capSetGuide(btn){
+ capButtons().forEach(b=>b.classList.remove('cap-guide'));
+ if(btn&&!btn.disabled)btn.classList.add('cap-guide')
+}
+
+function capRefreshGuide(){
+ const create=capFindButton(['criar anúncio','criar anuncio']);
+ const gen=capFindButton(['gerar áudio','gerar audio']);
+ const queue=capFindButton(['mandar pra fila']);
+ const discard=document.querySelector('.discardGeneratedBtn');
+
+ if(capPendingDecision){
+  if(create)create.classList.add('cap-locked');
+  if(gen)gen.classList.add('cap-locked');
+  capSetGuide(queue||discard);
+  if(discard)discard.style.display='';
+ }else{
+  if(create)create.classList.remove('cap-locked');
+  if(gen)gen.classList.remove('cap-locked');
+  if(discard)discard.style.display='none';
+  capSetGuide(gen||create);
+ }
+}
+
+function capMarkPending(){
+ capPendingDecision=true;
+ capRefreshGuide()
+}
+
+function capResolvePending(){
+ capPendingDecision=false;
+ capRefreshGuide()
+}
+
+function discardGeneratedAd(){
+ try{
+  if(typeof currentAudioUrl!=='undefined'&&currentAudioUrl){
+   URL.revokeObjectURL(currentAudioUrl)
+  }
+ }catch(e){}
+
+ document.querySelectorAll('audio').forEach(a=>{
+  try{
+   a.pause();
+   a.removeAttribute('src');
+   a.load()
+  }catch(e){}
+ });
+
+ ['audioPreview','previewAudio','generatedAudio','audioResult'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el){
+   if('src' in el)el.removeAttribute('src');
+   else el.innerHTML=''
+  }
+ });
+
+ capResolvePending();
+}
+
+document.addEventListener('click',e=>{
+ const b=e.target.closest('button');
+ if(!b)return;
+
+ const t=(b.textContent||'').toLowerCase();
+
+ if(capPendingDecision&&(
+  t.includes('criar anúncio')||
+````
+  t.includes('criar anuncio')||
+  t.includes('gerar áudio')||
+  t.includes('gerar audio')
+ )){
+   e.preventDefault();
+   e.stopImmediatePropagation();
+   return false
+ }
+
+ if(t.includes('gerar áudio')||t.includes('gerar audio')){
+  setTimeout(()=>{
+   const hasAudio=[...document.querySelectorAll('audio')].some(a=>a.src);
+   if(hasAudio)capMarkPending()
+  },700)
+ }
+
+ if(t.includes('mandar pra fila')){
+  setTimeout(capResolvePending,300)
+ }
+},true);
+
+const capObserver=new MutationObserver(()=>capRefreshGuide());
+capObserver.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class','disabled']});
+
+window.discardGeneratedAd=discardGeneratedAd;
+setTimeout(capRefreshGuide,600);
+
+(function(){
+ const css=document.createElement('style');
+ css.textContent=`
+ .cap-guide{animation:capPulse 1.15s infinite!important;box-shadow:0 0 0 0 rgba(25,170,92,.55)}
+ @keyframes capPulse{0%{transform:scale(1);box-shadow:0 0 0 0 rgba(25,170,92,.5)}65%{transform:scale(1.015);box-shadow:0 0 0 12px rgba(25,170,92,0)}100%{transform:scale(1)}}
+ .cap-locked{opacity:.35!important;pointer-events:none!important}
+ .discardGeneratedBtn{background:transparent!important;color:#68776f!important;border:0!important;box-shadow:none!important;text-decoration:underline;font-size:13px;padding:8px 10px!important}
+ `;
+ document.head.appendChild(css);
+
+ const gen=capFindButton(['gerar áudio','gerar audio']);
+ if(gen&&gen.parentElement){
+  const b=document.createElement('button');
+  b.type='button';
+  b.className='discardGeneratedBtn';
+  b.textContent='desistir';
+  b.style.display='none';
+  b.onclick=discardGeneratedAd;
+  gen.parentElement.appendChild(b)
+ }
+})();
+
+function capResetCreateV20(){
+ try{
+  selectedProduct='';
+  document.querySelectorAll('#favorites button').forEach(b=>b.classList.remove('selected'));
+  const sp=document.getElementById('selectedProduct');if(sp)sp.classList.add('hidden');
+  const sn=document.getElementById('selectedName');if(sn)sn.textContent='';
+  const pr=document.getElementById('price');if(pr)pr.value='';
+  const br=document.getElementById('brief');if(br)br.value='';
+  ['text1','text2'].forEach(id=>{
+   const el=document.getElementById(id);
+   if(el)el.value=''
+  });
+  ['actions1','actions2'].forEach(id=>{
+   const el=document.getElementById(id);
+   if(el)el.classList.add('hidden')
+  });
+  ['audio1','audio2'].forEach(id=>{
+   const el=document.getElementById(id);
+   if(el){
+    try{el.pause()}catch(e){}
+    el.removeAttribute('src')
+   }
+  });
+  pendingAudio={};
+  const sg=document.getElementById('suggestions');if(sg)sg.classList.add('hidden');
+  capResolvePending();
+  updateCounts()
+ }catch(e){}
+}
+
+(function(){
+ const css=document.createElement('style');
+ css.textContent=`
+ #createdAudiosV19{margin-top:18px}
+ .cap-audio-list-v19{display:grid;gap:9px;margin-top:10px}
+ .cap-audio-row-v19{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:11px 12px;border:1px solid #dbe5de;border-radius:12px;background:#fff}
+ .cap-audio-row-v19 .cap-info-v19{min-width:0}
+ .cap-audio-row-v19 b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .cap-audio-row-v19 small{display:block;color:#6d7c73;margin-top:3px}
+ .cap-audio-row-v19 button{border:0;border-radius:9px;padding:9px 11px;cursor:pointer;font-weight:800}
+ .cap-play-v19{background:#e9f8ef;color:#126b38}
+ .cap-del-v19{background:#fff0f0;color:#a22}
+ @media(max-width:700px){.cap-audio-row-v19{grid-template-columns:1fr auto}.cap-audio-row-v19 .cap-info-v19{grid-column:1/-1}}
+ `;
+ document.head.appendChild(css);
+
+ const adsBox=document.getElementById('ads');
+ if(adsBox){
+  const host=document.createElement('div');
+  host.id='createdAudiosV19';
+  host.innerHTML='<h3>🔊 Áudios criados</h3><div id="createdAudiosListV19" class="cap-audio-list-v19"></div>';
+  adsBox.parentElement.appendChild(host)
+ }
+})();
+
+async function capPlaySavedAdV19(index){
+ const a=ads[index];
+ if(!a)return;
+ try{
+  const blob=await capGetAdBlob(a.audioKey);
+  if(!blob)throw new Error('Áudio não encontrado neste aparelho.');
+  const url=URL.createObjectURL(blob);
+  const audio=new Audio(url);
+  audio.onended=()=>URL.revokeObjectURL(url);
+  audio.onerror=()=>URL.revokeObjectURL(url);
+  await audio.play()
+ }catch(e){
+  alert(e.message||'Não foi possível tocar o áudio.')
+ }
+}
+
+async function capDeleteSavedAdV19(index){
+ if(!confirm('Excluir este anúncio e o áudio salvo?'))return;
+ const a=ads[index];
+ try{
+  if(a?.audioKey){
+   const d=await capAdDb();
+   await new Promise((ok,no)=>{
+    const r=d.transaction('audio','readwrite').objectStore('audio').delete(a.audioKey);
+    r.onsuccess=()=>ok(true);
+    r.onerror=()=>no(r.error)
+   })
+  }
+ }catch(e){}
+ ads.splice(index,1);
+ saveAds();
+ renderCreatedAudiosV19()
+}
+
+function renderCreatedAudiosV19(){
+ const box=document.getElementById('createdAudiosListV19');
+ if(!box)return;
+ if(!ads.length){
+  box.innerHTML='<div class="empty">Nenhum áudio criado ainda.</div>';
+  return
+ }
+ box.innerHTML=ads.map((a,i)=>{
+  const name=a.label||a.product||('anúncio '+(i+1));
+  const meta=[a.voice,a.top?'TOP do Dia':'Anúncio',a.paused?'Pausado':'Na programação'].filter(Boolean).join(' • ');
+  return `<div class="cap-audio-row-v19">
+   <div class="cap-info-v19"><b>${name}</b><small>${meta}</small></div>
+   <button class="cap-play-v19" type="button" onclick="capPlaySavedAdV19(${i})">▶ Ouvir</button>
+   <button class="cap-del-v19" type="button" onclick="capDeleteSavedAdV19(${i})">🗑 Excluir</button>
+  </div>`
+ }).join('')
+}
+
+window.capPlaySavedAdV19=capPlaySavedAdV19;
+window.capDeleteSavedAdV19=capDeleteSavedAdV19;
+
+const capOldRenderAdsV19=renderAds;
+renderAds=function(){
+ capOldRenderAdsV19();
+ renderCreatedAudiosV19()
+};
+
+renderCreatedAudiosV19();
+
+function capStageV21(stage){
+ document.body.dataset.capStage=stage;
+ const suggest=document.getElementById('suggest');
+ const top=document.getElementById('topDay');
+ const suggestions=document.getElementById('suggestions');
+ const gen=document.querySelector('[data-gen="1"]');
+
+ if(stage==='start'){
+  if(suggest){suggest.style.display='';suggest.disabled=false}
+  if(top)top.style.display='';
+  if(suggestions)suggestions.classList.add('hidden');
+  if(gen)gen.classList.remove('cap-guide');
+  if(suggest)suggest.classList.add('cap-guide');
+  capPendingDecision=false
+ }
+
+ if(stage==='phrase'){
+  if(suggest)suggest.style.display='none';
+  if(top)top.style.display='none';
+  if(suggestions)suggestions.classList.remove('hidden');
+  if(gen)gen.classList.add('cap-guide');
+  if(suggest)suggest.classList.remove('cap-guide')
+ }
+
+ if(stage==='audio'){
+  if(suggest)suggest.style.display='none';
+  if(top)top.style.display='none'
+ }
+}
+
+function capFindDiscardButtonV21(){
+ let b=document.getElementById('capDiscardV21');
+ if(b)return b;
+
+ b=document.createElement('button');
+ b.type='button';
+ b.id='capDiscardV21';
+ b.className='discardGeneratedBtn';
+ b.textContent='✕ DESISTIR';
+
+ b.onclick=()=>{
+  capPendingDecision=false;
+  document.querySelectorAll('audio').forEach(a=>{
+   try{a.pause()}catch(e){}
+  });
+
+  ['actions1','actions2'].forEach(id=>{
+   const el=document.getElementById(id);
+   if(el)el.classList.add('hidden')
+  });
+
+  capStageV21('start')
+ };
+
+ const gen=document.querySelector('[data-gen="1"]');
+ if(gen&&gen.parentElement)gen.parentElement.appendChild(b);
+
+ return b
+}
+
+capFindDiscardButtonV21();
+
+const capOldCreateTextsV21=createTexts;
+createTexts=async function(){
+ await capOldCreateTextsV21();
+
+ const t1=document.getElementById('text1');
+ const brief=document.getElementById('brief');
+
+ if(t1&&t1.value.trim()){
+  if(brief)brief.value=t1.value.trim();
+  capStageV21('phrase')
+ }
+};
+
+const capOldGenerateVoiceV21=generateVoice;
+generateVoice=async function(n,btn){
+ await capOldGenerateVoiceV21(n,btn);
+
+ if(pendingAudio[n]){
+  capPendingDecision=true;
+  capStageV21('audio');
+
+  const q=document.querySelector('[data-queue="'+n+'"]');
+  if(q)q.classList.add('cap-guide')
+ }
+};
+
+setTimeout(()=>capStageV21('start'),500);
+
+/* =========================================================
+   CAPIVARA RADIO — SERVIDOR CENTRAL V50
+========================================================= */
+
+const CAP_SERVER='https://capivara-radio-server.onrender.com';
+
+function capJson(v,fallback){
+ try{return JSON.parse(v)}catch(e){return fallback}
+}
+
+async function capFetchJson(url,opt={}){
+ const r=await fetch(url,opt);
+ let data={};
+
+ try{
+  data=await r.json()
+ }catch(e){}
+
+ if(!r.ok){
+  throw new Error(
+   data?.error||
+   data?.message||
+   ('Servidor '+r.status)
+  )
+ }
+
+ return data
+}
+
+function capNormalizeClient(raw,code){
+ const c=raw?.client||raw?.data||raw||{};
+
+ return {
+  name:c.name||c.nome||c.storeName||'Loja',
+  ramo:c.ramo||c.activity||c.segment||'Açougue',
+  type:c.ramo||c.activity||c.segment||'Açougue',
+  code:String(c.code||c.codigo||code||''),
+  active:c.active!==false&&c.ativo!==false
+ }
+}
+
+function capApplyRemoteState(state){
+ if(!state||typeof state!=='object')return;
+
+ if(Array.isArray(state.ads)){
+  ads=state.ads
+ }
+
+ if(Number.isFinite(+state.voiceTurn)){
+  voiceTurn=+state.voiceTurn
+ }
+
+ if(state.level){
+  level=state.level
+ }
+
+ if(state.selectedTheme){
+  selectedThemeV11=state.selectedTheme
+ }
+
+ if(state.adsPerBlock){
+  setAdsPerBlock(state.adsPerBlock,false)
+ }
+
+ if(state.settings&&typeof state.settings==='object'){
+  Object.entries(state.settings).forEach(([k,v])=>{
+   const el=document.getElementById(k);
+   if(!el)return;
+
+   if(el.type==='checkbox'){
+    el.checked=!!v
+   }else{
+    el.value=v
+   }
+  })
+ }
+
+ renderAds();
+ renderCreatedAudiosV19();
+ renderThemesV11()
+}
+
+function capBuildRemoteState(){
+ const settings={};
+
+ ['musicVol','bedVol','open','close','jingles','mentionStore','fullCurrency']
+ .forEach(id=>{
+  const el=document.getElementById(id);
+  if(!el)return;
+
+  settings[id]=
+   el.type==='checkbox'
+   ?el.checked
+   :el.value
+ });
+
+ return {
+  ads,
+  voiceTurn,
+  level,
+  selectedTheme:selectedThemeV11,
+  adsPerBlock:+(
+   document.getElementById('adsPerBlock')?.value||3
+  ),
+  settings,
+  updatedAt:new Date().toISOString()
+ }
+}
+
+async function capPullClientStateV50(){
+ if(!store.code)return;
+
+ try{
+  const data=await capFetchJson(
+   CAP_SERVER+
+   '/api/client/'+
+   encodeURIComponent(store.code)+
+   '/state'
+  );
+
+  capApplyRemoteState(
+   data?.state||
+   data?.data||
+   {}
+  )
+ }catch(e){
+  console.warn(
+   'Estado remoto indisponível:',
+   e
+  )
+ }
+}
+
+let capPushTimerV50=null;
+
+function capPushClientStateV50(){
+ if(!store.code)return;
+
+ clearTimeout(capPushTimerV50);
+
+ capPushTimerV50=setTimeout(async()=>{
+  try{
+   await capFetchJson(
+    CAP_SERVER+
+    '/api/client/'+
+    encodeURIComponent(store.code)+
+    '/state',
+    {
+     method:'PUT',
+     headers:{
+      'Content-Type':'application/json'
+     },
+     body:JSON.stringify(
+      capBuildRemoteState()
+     )
+    }
+   )
+  }catch(e){
+   console.warn(
+    'Não foi possível salvar estado no servidor:',
+    e
+   )
+  }
+ },450)
+}
+
+async function capServerLoginV50(code){
+ const data=await capFetchJson(
+  CAP_SERVER+
+  '/api/client/'+
+  encodeURIComponent(code)
+ );
+
+ const c=capNormalizeClient(data,code);
+
+ if(!c.code){
+  throw new Error(
+   'Código não encontrado'
+  )
+ }
+
+ if(!c.active){
+  throw new Error(
+   'Rádio bloqueada pelo administrador'
+  )
+ }
+
+ return c
+}
+
+async function capGenerateTextServerV50(q){
+ const data=await capFetchJson(
+  CAP_SERVER+'/api/ai/generate',
+  {
+   method:'POST',
+   headers:{
+    'Content-Type':'application/json'
+   },
+   body:JSON.stringify({
+    prompt:promptForGemini(q),
+    text:q,
+    pedido:q,
+    ramo:store.ramo,
+    storeName:store.name,
+    mentionStore:
+     document.getElementById('mentionStore')
+      ?.checked===true,
+    fullCurrency:
+     document.getElementById('fullCurrency')
+      ?.checked===true,
+    top:createMode==='top',
+    maxChars:150
+   })
+  }
+ );
+
+ let text=
+  data?.text||
+  data?.frase||
+  data?.response||
+  data?.generated_text||
+  data?.data?.text||
+  '';
+
+ text=String(text||'')
+  .trim()
+  .replace(
+   /^```(?:json)?\s*/i,
+   ''
+  )
+  .replace(
+   /```$/,
+   ''
+  )
+  .trim()
+  .replace(
+   /^["']|["']$/g,
+   ''
+  )
+  .toLowerCase()
+  .slice(0,150);
+
+ if(!text){
+  throw new Error(
+   'O servidor não retornou a frase.'
+  )
+ }
+
+ return text
+}
+
+async function capGenerateVoiceServerV50(text,voiceType){
+ const r=await fetch(
+  CAP_SERVER+'/api/voice/generate',
+  {
+   method:'POST',
+   headers:{
+    'Content-Type':'application/json',
+    'Accept':'audio/mpeg'
+   },
+   body:JSON.stringify({
+    text,
+    voiceType
+   })
+  }
+ );
+
+ if(!r.ok){
+  let msg='';
+
+  try{
+   const j=await r.json();
+   msg=
+    j?.error||
+    j?.message||
+    JSON.stringify(j)
+  }catch(e){
+   try{
+    msg=await r.text()
+   }catch(_){}
+  }
+
+  throw new Error(
+   'Servidor de voz '+
+   r.status+
+   (msg?' — '+msg:'')
+  )
+ }
+
+ const blob=await r.blob();
+
+ if(!blob.size){
+  throw new Error(
+   'Áudio vazio'
+  )
+ }
+
+ return blob
+}
+
+function capNextAdVoiceV50(){
+ const count=
+  +(
+   localStorage.getItem(
+    capClientKey(
+     'cap_voice_success_count'
+    )
+   )||0
+  );
+
+ return count%2===0
+  ?'adMale'
+  :'adFemale'
+}
+
+function capRegisterVoiceSuccessV50(){
+ const key=
+  capClientKey(
+   'cap_voice_success_count'
+  );
+
+ localStorage.setItem(
+  key,
+  String(
+   +(localStorage.getItem(key)||0)+1
+  )
+ )
+}
+
+async function capGenerateAudioDirectV50(text){
+ text=String(text||'')
+  .trim()
+  .toLowerCase()
+  .slice(0,150);
+
+ if(!text){
+  throw new Error(
+   'O texto do anúncio está vazio.'
+  )
+ }
+
+ const voiceType=
+  capNextAdVoiceV50();
+
+ const blob=
+  await capGenerateVoiceServerV50(
+   text,
+   voiceType
+  );
+
+ capRegisterVoiceSuccessV50();
+
+ return {
+  text,
+  voice:
+   voiceType==='adFemale'
+   ?'Voz feminina'
+   :'Voz masculina',
+  blob,
+  top:createMode==='top',
+  label:capAudioLabel(),
+  product:selectedProduct||'',
+  price:
+   (
+    document.getElementById('price')
+     ?.value||''
+   ).trim()
+ }
+}
+
+const capOriginalApplyAdmStoreV50=
+ applyAdmStore;
+
+applyAdmStore=function(c){
+ capOriginalApplyAdmStoreV50(c);
+
+ setTimeout(()=>{
+  capPullClientStateV50()
+ },0)
+};
+
+createTexts=async function(){
  if(todayCreated()>=capLimits().daily){
   alert(
    'O limite diário de anúncios foi atingido.'
@@ -994,21 +1708,25 @@ async function createTexts(){
   return
  }
 
- let q=$('#brief').value.trim();
+ let q=
+  document.getElementById('brief')
+   ?.value.trim()||'';
 
  if(selectedProduct){
   const price=
-   $('#price').value.trim();
+   document.getElementById('price')
+    ?.value.trim()||'';
 
   q=
    (q?q+'; ':'')+
    selectedProduct+
-   (price?'; preço '+price:'');
+   (price?'; preço '+price:'')
  }
 
  if(!q)return;
 
- const btn=$('#suggest');
+ const btn=
+  document.getElementById('suggest');
 
  if(btn){
   btn.disabled=true;
@@ -1016,344 +1734,56 @@ async function createTexts(){
  }
 
  try{
-  const ctrl=
-   new AbortController(),
-  timer=setTimeout(
-   ()=>ctrl.abort(),
-   20000
-  );
+  const text=
+   await capGenerateTextServerV50(q);
 
-  let r;
+  const t1=
+   document.getElementById('text1');
 
-  try{
-   r=await fetch(
-    CAP_SERVER_V50+
-    '/api/ai/generate',
-    {
-     method:'POST',
-     signal:ctrl.signal,
-     headers:{
-      'Content-Type':'application/json',
-      'Accept':'application/json'
-     },
-     body:JSON.stringify({
-      prompt:promptForGemini(q),
-      text:q,
-      pedido:q,
-      ramo:
-       store?.ramo||
-       store?.type||
-       '',
-      produto:
-       selectedProduct||
-       '',
-      preco:
-       ($('#price')?.value||'').trim(),
-      top:createMode==='top',
-      mentionStore:
-       $('#mentionStore')?.checked===true,
-      fullCurrency:
-       $('#fullCurrency')?.checked===true,
-      storeName:
-       store?.name||'',
-      maxChars:150
-     })
-    }
-   );
+  const brief=
+   document.getElementById('brief');
 
-  }finally{
-   clearTimeout(timer)
-  }
-
-  let data={};
-
-  try{
-   data=await r.json()
-  }catch{}
-
-  if(!r.ok){
-   throw new Error(
-    data?.error||
-    data?.message||
-    ('Servidor '+r.status)
-   )
-  }
-
-  let raw=
-   data?.text||
-   data?.frase||
-   data?.response||
-   data?.generated_text||
-   data?.data?.text||
-   '';
-
-  raw=String(raw||'')
-   .trim()
-   .replace(
-    /^```(?:json)?\s*/i,
-    ''
-   )
-   .replace(
-    /```$/,
-    ''
-   )
-   .trim()
-   .replace(
-    /^["']|["']$/g,
-    ''
-   );
-
-  if(!raw){
-   throw new Error(
-    'O servidor não retornou a frase.'
-   )
-  }
-
-  const generated=
-   raw
-    .toLowerCase()
-    .slice(0,150);
-
-  if($('#text1')){
-   $('#text1').value=
-    generated
-  }
-
-  $('#brief').value=
-   generated;
-
-  if($('#suggestions')){
-   $('#suggestions')
-    .classList.add('hidden')
-  }
+  if(t1)t1.value=text;
+  if(brief)brief.value=text;
 
   updateCounts();
-
-  document.body.dataset.v24stage=
-   'phrase';
+  capStageV21('phrase');
 
  }catch(e){
   console.error(e);
 
   alert(
    'Não foi possível criar agora.\n\n'+
-   (
-    e.name==='AbortError'
-     ?'Servidor demorou para responder.'
-     :e.message
-   )
-  );
-
+   e.message
+  )
  }finally{
   if(btn){
    btn.disabled=false;
-   btn.textContent=
-    '✨ CRIAR ANÚNCIO'
+   btn.textContent='✨ CRIAR ANÚNCIO'
   }
  }
+};
+
+const capSuggestV50=
+ document.getElementById('suggest');
+
+if(capSuggestV50){
+ capSuggestV50.onclick=createTexts
 }
 
-$('#suggest').onclick=createTexts;
+generateVoice=async function(n,btn){
+ let text=
+  document.getElementById(
+   'text'+n
+  )?.value.trim()||
+  document.getElementById(
+   'brief'
+  )?.value.trim()||
+  '';
 
-function updateCounts(){}
-
-['1','2'].forEach(
- n=>$('#text'+n).oninput=()=>{
-  let el=$('#text'+n);
-
-  el.value=
-   el.value
-    .toLowerCase()
-    .slice(0,150);
-
-  updateCounts()
- }
-);
-
-let pendingAudio={};
-
-function capAdDb(){
- return new Promise((ok,no)=>{
-  const r=indexedDB.open(
-   'CapivaraAdsV19',
-   1
-  );
-
-  r.onupgradeneeded=()=>{
-   if(
-    !r.result.objectStoreNames
-     .contains('audio')
-   ){
-    r.result.createObjectStore(
-     'audio'
-    )
-   }
-  };
-
-  r.onsuccess=()=>ok(r.result);
-  r.onerror=()=>no(r.error)
- })
-}
-
-async function capSaveAdBlob(key,blob){
- const d=await capAdDb();
-
- return new Promise((ok,no)=>{
-  const r=d
-   .transaction(
-    'audio',
-    'readwrite'
-   )
-   .objectStore('audio')
-   .put(blob,key);
-
-  r.onsuccess=()=>ok(true);
-  r.onerror=()=>no(r.error)
- })
-}
-
-async function capGetAdBlob(key){
- const d=await capAdDb();
-
- return new Promise((ok,no)=>{
-  const r=d
-   .transaction('audio')
-   .objectStore('audio')
-   .get(key);
-
-  r.onsuccess=()=>ok(r.result);
-  r.onerror=()=>no(r.error)
- })
-}
-
-function capAudioLabel(){
- const product=
-  (selectedProduct||'anúncio').trim(),
- price=
-  ($('#price')?.value||'').trim();
-
- return price
-  ?product+' • '+price
-  :product
-}
-
-async function capGenerateAudioDirectV201(text){
- text=String(text||'')
-  .trim()
+ text=text
   .toLowerCase()
   .slice(0,150);
-
- if(!text){
-  throw new Error(
-   'O texto do anúncio está vazio.'
-  )
- }
-
- const last=[...ads]
-  .reverse()
-  .find(a=>a&&a.voice);
-
- const lastWasMale=
-  last&&
-  /mascul|homem/i.test(
-   last.voice||''
-  );
-
- const lastWasFemale=
-  last&&
-  /femin|mulher/i.test(
-   last.voice||''
-  );
-
- const female=
-  lastWasMale
-   ?true
-   :lastWasFemale
-    ?false
-    :false;
-
- const voiceName=
-  female
-   ?'Voz feminina'
-   :'Voz masculina';
-
- const r=await fetch(
-  CAP_SERVER_V50+
-  '/api/voice/generate',
-  {
-   method:'POST',
-   headers:{
-    'Content-Type':'application/json',
-    'Accept':'audio/mpeg'
-   },
-   body:JSON.stringify({
-    text,
-    voiceType:
-     female
-      ?'adFemale'
-      :'adMale'
-   })
-  }
- );
-
- if(!r.ok){
-  let detail='';
-
-  try{
-   const ct=
-    r.headers.get(
-     'content-type'
-    )||'';
-
-   detail=
-    ct.includes(
-     'application/json'
-    )
-     ?JSON.stringify(
-       await r.json()
-      )
-     :await r.text();
-
-  }catch{}
-
-  throw new Error(
-   'Servidor de voz '+
-   r.status+
-   (
-    detail
-     ?' — '+detail.slice(0,180)
-     :''
-   )
-  )
- }
-
- const blob=await r.blob();
-
- if(!blob||!blob.size){
-  throw new Error(
-   'O servidor não retornou áudio.'
-  )
- }
-
- return {
-  text,
-  voice:voiceName,
-  blob,
-  top:createMode==='top',
-  label:capAudioLabel(),
-  product:selectedProduct||'',
-  price:
-   ($('#price')?.value||'').trim()
- };
-}
-
-async function generateVoice(n,btn){
- let text=
-  $('#text'+n)
-   .value
-   .trim()
-   .toLowerCase()
-   .slice(0,150);
 
  if(!text)return;
 
@@ -1362,33 +1792,51 @@ async function generateVoice(n,btn){
 
  try{
   const p=
-   await capGenerateAudioDirectV201(
+   await capGenerateAudioDirectV50(
     text
    );
 
-  if(pendingAudio[n]?.url){
+  if(
+   pendingAudio[n]?.url
+  ){
    URL.revokeObjectURL(
     pendingAudio[n].url
    )
   }
 
   const url=
-   URL.createObjectURL(
-    p.blob
-   );
+   URL.createObjectURL(p.blob);
 
   pendingAudio[n]={
    ...p,
    url
   };
 
-  $('#audio'+n).src=url;
+  const audio=
+   document.getElementById(
+    'audio'+n
+   );
 
-  $('#actions'+n)
-   .classList.remove('hidden');
+  if(audio){
+   audio.src=url
+  }
+
+  const actions=
+   document.getElementById(
+    'actions'+n
+   );
+
+  if(actions){
+   actions.classList.remove(
+    'hidden'
+   )
+  }
 
   btn.textContent=
    '✓ ÁUDIO PRONTO';
+
+  capPendingDecision=true;
+  capStageV21('audio');
 
  }catch(e){
   console.error(e);
@@ -1404,1816 +1852,891 @@ async function generateVoice(n,btn){
  }finally{
   btn.disabled=false
  }
-}
+};
 
-$$('[data-gen]').forEach(
- b=>b.onclick=()=>
-  generateVoice(
-   b.dataset.gen,
-   b
-  )
-);
-
-function playTopSting(){
- try{
-  const C=
-   window.AudioContext||
-   window.webkitAudioContext,
-  ctx=new C(),
-  g=ctx.createGain();
-
-  g.connect(
-   ctx.destination
-  );
-
-  g.gain.setValueAtTime(
-   .0001,
-   ctx.currentTime
-  );
-
-  g.gain.exponentialRampToValueAtTime(
-   .18,
-   ctx.currentTime+.03
-  );
-
-  g.gain.exponentialRampToValueAtTime(
-   .0001,
-   ctx.currentTime+1.05
-  );
-
-  [
-   [392,0],
-   [523.25,.18],
-   [659.25,.36],
-   [784,.58]
-  ].forEach(([f,t])=>{
-   const o=
-    ctx.createOscillator();
-
-   o.type='sine';
-   o.frequency.value=f;
-
-   o.connect(g);
-
-   o.start(
-    ctx.currentTime+t
-   );
-
-   o.stop(
-    ctx.currentTime+t+.32
+document
+ .querySelectorAll('[data-gen]')
+ .forEach(b=>{
+  b.onclick=()=>
+   generateVoice(
+    b.dataset.gen,
+    b
    )
-  });
+ });
 
-  return new Promise(
-   r=>setTimeout(
-    ()=>{
-     ctx.close();
-     r()
-    },
-    1120
-   )
-  );
+const capOldSaveAdsV50=saveAds;
 
- }catch{
-  return Promise.resolve()
+saveAds=function(){
+ capOldSaveAdsV50();
+ capPushClientStateV50()
+};
+
+/* =========================================================
+   CAPIVARA PLAYER — PLAYLISTS ONLINE V53
+   ADM -> SERVIDOR -> PLAYER
+========================================================= */
+
+(function(){
+ const SERVER='https://capivara-radio-server.onrender.com';
+ let remotePlaylistsV53=[];
+ let remoteTracksV53=[];
+ let remotePlaylistIdV53='';
+ let remoteAudioV53=null;
+ let remoteIndexV53=0;
+ let loadingPlaylistsV53=false;
+
+ function arr(v){
+  return Array.isArray(v)?v:[]
  }
-}
 
-$$('[data-preview]').forEach(
- b=>b.onclick=async()=>{
-  const n=b.dataset.preview,
-  a=$('#audio'+n);
-
-  if(!a.src)return;
-
-  if(pendingAudio[n]?.top){
-   await playTopSting()
-  }
-
-  a.currentTime=0;
-
-  a.play().catch(
-   ()=>alert(
-    'Não foi possível tocar a prévia.'
-   )
-  );
+ function esc(v){
+  return String(v??'')
+   .replace(/&/g,'&amp;')
+   .replace(/</g,'&lt;')
+   .replace(/>/g,'&gt;')
+   .replace(/"/g,'&quot;')
  }
-);
 
-$$('[data-queue]').forEach(
- b=>b.onclick=async()=>{
-  const n=b.dataset.queue,
-  p=pendingAudio[n];
+ function playlistKey(){
+  return 'cap_remote_playlist_'+String(store?.code||'semcliente')
+ }
 
-  if(!p)return;
+ function pickArray(raw){
+  if(Array.isArray(raw))return raw;
 
-  let days=+$('#duration').value,
-  exp=days
-   ?Date.now()+days*86400000
-   :null;
-
-  if(todayCreated()>=capLimits().daily){
-   alert(
-    'O limite diário de anúncios foi atingido.'
-   );
-   return
+  if(raw&&Array.isArray(raw.playlists)){
+   return raw.playlists
   }
 
-  if(weekCreated()>=capLimits().weekly){
-   alert(
-    'O limite semanal de anúncios foi atingido.'
-   );
-   return
+  if(raw?.data&&Array.isArray(raw.data)){
+   return raw.data
   }
 
-  if(
-   p.top&&
-   topCreatedToday()>=capLimits().top
-  ){
-   alert(
-    'O limite diário de TOP foi atingido.'
-   );
-   return
+  if(raw?.data&&Array.isArray(raw.data.playlists)){
+   return raw.data.playlists
   }
 
-  const id=
-   'ad_'+
-   Date.now()+
-   '_'+
-   Math.random()
-    .toString(36)
-    .slice(2,7),
+  if(raw?.playlists&&typeof raw.playlists==='object'){
+   return Object.entries(raw.playlists).map(([id,p])=>({
+    id,
+    ...(p||{})
+   }))
+  }
 
-  audioKey=
-   capClientAudioKey(id);
+  if(raw&&typeof raw==='object'){
+   const values=Object.values(raw);
+
+   if(
+    values.length&&
+    values.every(
+     x=>x&&typeof x==='object'
+    )
+   ){
+    return Object.entries(raw).map(([id,p])=>({
+     id,
+     ...(p||{})
+    }))
+   }
+  }
+
+  return []
+ }
+
+ function normalizeTrack(t,i){
+  if(typeof t==='string'){
+   return {
+    id:'track_'+i,
+    name:t,
+    url:t
+   }
+  }
+
+  t=t||{};
+
+  const mediaId=
+   t.mediaId||
+   t.media_id||
+   t.fileId||
+   t.file_id||
+   '';
+
+  let url=
+   t.url||
+   t.audioUrl||
+   t.audio_url||
+   t.src||
+   t.streamUrl||
+   '';
+
+  if(!url&&mediaId){
+   url=
+    SERVER+
+    '/api/media/'+
+    encodeURIComponent(mediaId)
+  }
+
+  return {
+   ...t,
+   id:
+    t.id||
+    mediaId||
+    ('track_'+i),
+   mediaId,
+   name:
+    t.name||
+    t.title||
+    t.nome||
+    t.filename||
+    ('Música '+(i+1)),
+   url
+  }
+ }
+
+ function normalizePlaylist(p,i){
+  p=p||{};
+
+  let tracks=
+   p.tracks||
+   p.musics||
+   p.music||
+   p.items||
+   p.songs||
+   p.faixas||
+   [];
+
+  if(!Array.isArray(tracks)){
+   tracks=[]
+  }
+
+  tracks=
+   tracks
+    .map(normalizeTrack)
+    .filter(t=>t.url);
+
+  return {
+   ...p,
+   id:String(
+    p.id||
+    p.key||
+    p.slug||
+    p.name||
+    p.title||
+    ('playlist_'+i)
+   ),
+   name:
+    p.name||
+    p.title||
+    p.nome||
+    ('Playlist '+(i+1)),
+   tracks
+  }
+ }
+
+ async function fetchPlaylists(){
+  if(loadingPlaylistsV53)return;
+
+  loadingPlaylistsV53=true;
 
   try{
-   await capSaveAdBlob(
-    audioKey,
-    p.blob
+   const r=await fetch(
+    SERVER+'/api/playlists',
+    {
+     cache:'no-store',
+     headers:{
+      'Accept':'application/json'
+     }
+    }
    );
+
+   if(!r.ok){
+    throw new Error(
+     'Servidor '+r.status
+    )
+   }
+
+   const j=await r.json();
+
+   const source=
+    j?.playlists??
+    j?.data?.playlists??
+    j?.data??
+    j;
+
+   remotePlaylistsV53=
+    pickArray(source)
+     .map(normalizePlaylist)
+     .filter(p=>p.tracks.length);
+
+   const saved=
+    localStorage.getItem(
+     playlistKey()
+    )||'';
+
+   remotePlaylistIdV53=
+    remotePlaylistsV53.some(
+     p=>p.id===saved
+    )
+    ?saved
+    :(remotePlaylistsV53[0]?.id||'');
+
+   if(remotePlaylistIdV53){
+    localStorage.setItem(
+     playlistKey(),
+     remotePlaylistIdV53
+    )
+   }
+
+   applySelected();
+   renderSelector();
 
   }catch(e){
-   alert(
-    'Não foi possível salvar o áudio.'
+   console.warn(
+    'Playlists online indisponíveis:',
+    e
    );
-   return
-  }
 
-  ads.push({
-   id,
-   label:p.label,
-   product:p.product,
-   price:p.price,
-   text:p.text,
-   voice:p.voice,
-   paused:false,
-   exp,
-   audioKey,
-   top:!!p.top,
-   createdDay:dayKey()
-  });
+   remotePlaylistsV53=[];
+   remoteTracksV53=[];
+   renderSelector()
 
-  registerUse(
-   !!p.top
-  );
-
-  localStorage.setItem(
-   capClientKey(
-    'cap_voice_queued_count'
-   ),
-   String(
-    +(
-     localStorage.getItem(
-      capClientKey(
-       'cap_voice_queued_count'
-      )
-     )||0
-    )+1
-   )
-  );
-
-  pendingAudio[n]=null;
-
-  $('#actions'+n)
-   .classList.add('hidden');
-
-  $('#audio'+n)
-   .removeAttribute('src');
-
-  b.textContent=
-   '✓ NA PROGRAMAÇÃO';
-
-  setTimeout(
-   ()=>b.textContent=
-    '➕ MANDAR PRA FILA',
-   900
-  );
-
-  saveAds();
-  renderCreatedAudiosV19();
-  capResetCreateV20();
-  capStageV21('start');
-
-  if(p.top){
-   setCreateMode('normal')
-  }
- }
-);
-````
-````javascript
-function capSafeJson(key,fallback){
- try{
-  const v=JSON.parse(localStorage.getItem(key)||'null');
-  return v==null?fallback:v
- }catch(e){
-  return fallback
- }
-}
-
-function capAudioVolume(){
- const el=document.getElementById('musicVol');
-
- return Math.max(
-  0,
-  Math.min(
-   1,
-   Number(el?.value||75)/100
-  )
- )
-}
-
-let radioAudio=null,
-radioIndex=0;
-
-function stopRadioAudio(){
- if(!radioAudio)return;
-
- try{
-  radioAudio.onended=null;
-  radioAudio.onerror=null;
-  radioAudio.pause();
-  radioAudio.currentTime=0;
-
-  if(radioAudio._capObjectUrl){
-   URL.revokeObjectURL(
-    radioAudio._capObjectUrl
-   )
-  }
- }catch(e){}
-
- radioAudio=null
-}
-
-async function capGetMusicBlobV11(meta){
- if(!meta)return null;
-
- try{
-  const db=await capOpenDbV36(
-   'CapivaraAcervoV9',
-   1,
-   'files'
-  );
-
-  return await new Promise(
-   (ok,no)=>{
-    const tx=db.transaction('files'),
-    st=tx.objectStore('files');
-
-    const keys=[
-     meta.id,
-     'music:'+meta.id,
-     meta.audioKey,
-     meta.fileKey
-    ].filter(Boolean);
-
-    let i=0;
-
-    const next=()=>{
-     if(i>=keys.length){
-      ok(null);
-      return
-     }
-
-     const q=st.get(keys[i++]);
-
-     q.onsuccess=()=>{
-      if(q.result){
-       ok(q.result)
-      }else{
-       next()
-      }
-     };
-
-     q.onerror=()=>next()
-    };
-
-    next()
-   }
-  );
-
- }catch(e){
-  return null
- }
-}
-
-async function capResolveMusicUrlV11(meta){
- if(!meta)return null;
-
- const direct=
-  meta.audioUrl||
-  meta.url||
-  meta.src||
-  meta.fileUrl;
-
- if(direct){
-  return {
-   url:direct,
-   object:false
+  }finally{
+   loadingPlaylistsV53=false
   }
  }
 
- const blob=
-  await capGetMusicBlobV11(meta);
-
- if(blob){
-  return {
-   url:URL.createObjectURL(blob),
-   object:true
-  }
+ function selectedPlaylist(){
+  return remotePlaylistsV53.find(
+   p=>p.id===remotePlaylistIdV53
+  )||null
  }
 
- return null
-}
+ function applySelected(){
+  const p=selectedPlaylist();
 
-async function playNextAdmMusic(){
- if(!playing)return;
+  remoteTracksV53=
+   p?arr(p.tracks):[];
 
- if(pendingThemeV11){
+  if(remoteIndexV53>=remoteTracksV53.length){
+   remoteIndexV53=0
+  }
+
   selectedThemeV11=
-   pendingThemeV11;
-
-  pendingThemeV11=null;
+   p?.name||
+   selectedThemeV11;
 
   localStorage.setItem(
    'capivara_theme_'+store.code,
    selectedThemeV11
   );
 
-  radioIndex=0;
-
   renderThemesV11();
   updateAdmStatus()
  }
 
- const list=
-  themeMusicV11(
-   selectedThemeV11
+ function selectorHost(){
+  let host=
+   document.getElementById(
+    'capPlaylistOnlineV53'
+   );
+
+  if(host)return host;
+
+  const ref=
+   document.getElementById(
+    'themeButtonsV11'
+   );
+
+  if(!ref)return null;
+
+  host=document.createElement('div');
+  host.id='capPlaylistOnlineV53';
+
+  host.style.cssText=
+   'margin:12px 0;padding:12px;border:1px solid #dce7df;border-radius:12px;background:#fff';
+
+  ref.parentElement.insertBefore(
+   host,
+   ref
   );
 
- if(!list.length){
-  $('#nowTitle').textContent=
-   'Tema sem músicas';
-
-  $('#nowSub').textContent=
-   selectedThemeV11;
-
-  return
+  return host
  }
 
- const meta=
-  list[
-   radioIndex%
-   list.length
-  ];
+ function renderSelector(){
+  const host=selectorHost();
 
- radioIndex=
-  (radioIndex+1)%
-  list.length;
+  if(!host)return;
 
- const source=
-  await capResolveMusicUrlV11(
-   meta
-  );
+  if(!remotePlaylistsV53.length){
+   host.innerHTML=
+    '<b>🎵 Playlists</b>'+
+    '<div style="margin-top:6px;font-size:13px;opacity:.7">Nenhuma playlist online disponível.</div>';
 
- if(!source){
-  setTimeout(
-   ()=>{
+   return
+  }
+
+  host.innerHTML=
+   '<label style="display:block;font-weight:800;margin-bottom:7px">🎵 Escolha a playlist</label>'+
+   '<select id="capPlaylistSelectV53" style="width:100%;padding:11px;border:1px solid #d5dfd8;border-radius:10px;background:#fff">'+
+   remotePlaylistsV53.map(p=>
+    '<option value="'+
+    esc(p.id)+
+    '" '+
+    (p.id===remotePlaylistIdV53?'selected':'')+
+    '>'+
+    esc(p.name)+
+    ' • '+
+    p.tracks.length+
+    ' música'+
+    (p.tracks.length===1?'':'s')+
+    '</option>'
+   ).join('')+
+   '</select>';
+
+  const sel=
+   document.getElementById(
+    'capPlaylistSelectV53'
+   );
+
+  if(sel){
+   sel.onchange=()=>{
+    remotePlaylistIdV53=
+     sel.value;
+
+    localStorage.setItem(
+     playlistKey(),
+     remotePlaylistIdV53
+    );
+
+    remoteIndexV53=0;
+    applySelected();
+
     if(playing){
-     playNextAdmMusic()
+     stopRemote();
+     playRemoteNext()
     }
-   },
-   300
-  );
 
-  return
+    capPushClientStateV50()
+   }
+  }
  }
 
- stopRadioAudio();
-
- const a=
-  new Audio(
-   source.url
-  );
-
- radioAudio=a;
-
- if(source.object){
-  a._capObjectUrl=
-   source.url
- }
-
- a.volume=
-  capAudioVolume();
-
- $('#nowTitle').textContent=
-  meta.name||
-  meta.title||
-  'Música';
-
- $('#nowSub').textContent=
-  selectedThemeV11;
-
- a.onended=async()=>{
-  if(a._capObjectUrl){
+ function stopRemote(){
+  if(remoteAudioV53){
    try{
-    URL.revokeObjectURL(
-     a._capObjectUrl
-    )
+    remoteAudioV53.pause()
    }catch(e){}
-  }
 
-  if(radioAudio===a){
-   radioAudio=null
+   remoteAudioV53.onended=null;
+   remoteAudioV53.onerror=null;
+   remoteAudioV53=null
   }
+ }
 
+ async function playRemoteNext(){
   if(!playing)return;
 
-  await capRadioAfterMusicV16()
- };
+  if(!remoteTracksV53.length){
+   await fetchPlaylists();
 
- a.onerror=()=>{
-  if(a._capObjectUrl){
-   try{
-    URL.revokeObjectURL(
-     a._capObjectUrl
-    )
-   }catch(e){}
+   if(!remoteTracksV53.length){
+    return playLocalFallback()
+   }
   }
 
-  if(radioAudio===a){
-   radioAudio=null
+  if(remoteIndexV53>=remoteTracksV53.length){
+   remoteIndexV53=0
   }
 
-  if(playing){
+  const track=
+   remoteTracksV53[
+    remoteIndexV53++
+   ];
+
+  if(!track?.url){
    setTimeout(
-    playNextAdmMusic,
-    300
-   )
-  }
- };
-
- try{
-  await a.play()
- }catch(e){
-  console.error(
-   'Música:',
-   e
-  );
-
-  if(playing){
-   setTimeout(
-    playNextAdmMusic,
-    500
-   )
-  }
- }
-}
-
-function capSetPlayingUI(){
- const btn=
-  document.getElementById(
-   'radioToggle'
-  );
-
- if(btn){
-  btn.textContent=
-   playing
-    ?'⏸ PAUSAR RÁDIO'
-    :'▶ LIGAR RÁDIO';
-
-  btn.classList.toggle(
-   'active',
-   playing
-  )
- }
-
- const state=
-  document.getElementById(
-   'radioState'
-  );
-
- if(state){
-  state.textContent=
-   playing
-    ?'● NO AR'
-    :'● PAUSADA'
- }
-}
-
-function startRadio(){
- if(playing)return;
-
- playing=true;
-
- capSetPlayingUI();
-
- if(
-  radioAudio&&
-  radioAudio.src
- ){
-  radioAudio.volume=
-   capAudioVolume();
-
-  radioAudio.play()
-   .catch(
-    ()=>playNextAdmMusic()
+    playRemoteNext,
+    200
    );
-
-  return
- }
-
- playNextAdmMusic()
-}
-
-function pauseRadio(){
- playing=false;
-
- capSetPlayingUI();
-
- try{
-  if(radioAudio){
-   radioAudio.pause()
-  }
- }catch(e){}
-
- try{
-  if(window.capCurrentSpokenAudio){
-   window.capCurrentSpokenAudio.pause();
-   window.capCurrentSpokenAudio=null
-  }
- }catch(e){}
-
- try{
-  if(window.capCurrentBedAudio){
-   window.capCurrentBedAudio.pause();
-   window.capCurrentBedAudio=null
-  }
- }catch(e){}
-}
-
-function toggleRadio(){
- if(playing){
-  pauseRadio()
- }else{
-  startRadio()
- }
-}
-
-window.startRadio=startRadio;
-window.pauseRadio=pauseRadio;
-window.toggleRadio=toggleRadio;
-
-document.addEventListener(
- 'DOMContentLoaded',
- ()=>{
-  const btn=
-   document.getElementById(
-    'radioToggle'
-   );
-
-  if(btn){
-   btn.onclick=
-    toggleRadio
+   return
   }
 
-  capSetPlayingUI()
- }
-);
+  stopRemote();
 
-function capSettingsKey(){
- return 'cap_settings_'+
-  String(
-   store.code||
-   'default'
-  )
-}
+  const a=
+   new Audio(track.url);
 
-function capLoadSettings(){
- const s=
-  capSafeJson(
-   capSettingsKey(),
-   {}
-  );
+  remoteAudioV53=a;
 
- const cfg={
-  ...defaults,
-  ...s
- };
-
- const music=
-  document.getElementById(
-   'musicVol'
-  );
-
- const bed=
-  document.getElementById(
-   'bedVol'
-  );
-
- const jingles=
-  document.getElementById(
-   'jingles'
-  );
-
- const mention=
-  document.getElementById(
-   'mentionStore'
-  );
-
- const currency=
-  document.getElementById(
-   'fullCurrency'
-  );
-
- const open=
-  document.getElementById(
-   'open'
-  );
-
- const close=
-  document.getElementById(
-   'close'
-  );
-
- if(music){
-  music.value=
-   cfg.musicVol
- }
-
- if(bed){
-  bed.value=
-   cfg.bedVol
- }
-
- if(jingles){
-  jingles.checked=
-   cfg.jingles!==false
- }
-
- if(mention){
-  mention.checked=
-   !!cfg.mentionStore
- }
-
- if(currency){
-  currency.checked=
-   !!cfg.fullCurrency
- }
-
- if(open){
-  open.value=
-   cfg.open||
-   defaults.open
- }
-
- if(close){
-  close.value=
-   cfg.close||
-   defaults.close
- }
-}
-
-function capSaveSettings(){
- if(!capClientReady)return;
-
- const s={
-  musicVol:
-   document.getElementById(
-    'musicVol'
-   )?.value||
-   defaults.musicVol,
-
-  bedVol:
-   document.getElementById(
-    'bedVol'
-   )?.value||
-   defaults.bedVol,
-
-  jingles:
-   document.getElementById(
-    'jingles'
-   )?.checked!==false,
-
-  mentionStore:
-   document.getElementById(
-    'mentionStore'
-   )?.checked===true,
-
-  fullCurrency:
-   document.getElementById(
-    'fullCurrency'
-   )?.checked===true,
-
-  open:
-   document.getElementById(
-    'open'
-   )?.value||
-   defaults.open,
-
-  close:
-   document.getElementById(
-    'close'
-   )?.value||
-   defaults.close
- };
-
- localStorage.setItem(
-  capSettingsKey(),
-  JSON.stringify(s)
- )
-}
-
-[
- 'musicVol',
- 'bedVol',
- 'jingles',
- 'mentionStore',
- 'fullCurrency',
- 'open',
- 'close'
-].forEach(id=>{
- document.addEventListener(
-  'change',
-  e=>{
-   if(e.target?.id===id){
-    capSaveSettings()
-   }
-  }
- )
-});
-
-function setAdsPerBlock(
- value,
- save=true
-){
- value=Math.max(
-  1,
-  parseInt(
-   value||3,
-   10
-  )
- );
-
- const el=
-  document.getElementById(
-   'adsPerBlock'
-  );
-
- if(el){
-  el.value=value
- }
-
- if(
-  save&&
-  capClientReady
- ){
-  localStorage.setItem(
-   'cap_ads_per_block_'+
-   store.code,
-   String(value)
-  );
-
-  if(
-   typeof capPushClientStateV50===
-   'function'
-  ){
-   capPushClientStateV50()
-  }
- }
-}
-
-window.setAdsPerBlock=
- setAdsPerBlock;
-
-document.addEventListener(
- 'change',
- e=>{
-  if(
-   e.target?.id===
-   'adsPerBlock'
-  ){
-   setAdsPerBlock(
-    e.target.value,
-    true
-   )
-  }
- }
-);
-
-const capOldApplySettings=
- applyAdmStore;
-
-applyAdmStore=function(c){
- capOldApplySettings(c);
-
- setTimeout(
-  ()=>{
-   capLoadSettings();
-
-   const saved=
-    localStorage.getItem(
-     'cap_ads_per_block_'+
-     store.code
-    );
-
-   if(saved){
-    setAdsPerBlock(
-     saved,
-     false
-    )
-   }
-
-   if(
-    typeof capApplyMusicVolumeV39===
-    'function'
-   ){
-    capApplyMusicVolumeV39()
-   }
-
-   if(
-    typeof capApplyBedVolumeV39===
-    'function'
-   ){
-    capApplyBedVolumeV39()
-   }
-  },
-  0
- )
-};
-
-function capCleanTextV14(text){
- return String(text||'')
-  .replace(/\s+/g,' ')
-  .trim()
-  .toLowerCase()
-  .slice(0,150)
-}
-
-function capTextForSpeechV14(text){
- return String(text||'')
-  .replace(
-   /\btrês\b/gi,
-   'trêis'
-  )
-  .replace(
-   /\bpera\b/gi,
-   'pêra'
-  )
-}
-
-function capSelectedProductV14(){
- return String(
-  selectedProduct||
-  ''
- ).trim()
-}
-
-function capCurrentPriceV14(){
- return String(
-  document.getElementById(
-   'price'
-  )?.value||
-  ''
- ).trim()
-}
-
-function capCurrentBriefV14(){
- return String(
-  document.getElementById(
-   'brief'
-  )?.value||
-  ''
- ).trim()
-}
-
-function capBuildRequestV14(){
- const produto=
-  capSelectedProductV14();
-
- const preco=
-  capCurrentPriceV14();
-
- const livre=
-  capCurrentBriefV14();
-
- const parts=[];
-
- if(livre){
-  parts.push(livre)
- }
-
- if(produto){
-  parts.push(
-   'produto ou serviço: '+
-   produto
-  )
- }
-
- if(preco){
-  parts.push(
-   'preço informado: '+
-   preco
-  )
- }
-
- return parts.join('. ')
-}
-
-function capSetGeneratedTextV14(
- text
-){
- text=
-  capCleanTextV14(
-   text
-  );
-
- const brief=
-  document.getElementById(
-   'brief'
-  );
-
- const text1=
-  document.getElementById(
-   'text1'
-  );
-
- if(brief){
-  brief.value=text
- }
-
- if(text1){
-  text1.value=text
- }
-
- return text
-}
-
-function capGetGeneratedTextV14(){
- const brief=
-  document.getElementById(
-   'brief'
-  );
-
- return capCleanTextV14(
-  brief?.value||
-  ''
- )
-}
-
-function capButtonBusyV14(
- btn,
- busy,
- normalText,
- busyText
-){
- if(!btn)return;
-
- btn.disabled=!!busy;
-
- btn.textContent=
-  busy
-   ?busyText
-   :normalText
-}
-
-async function capGenerateTextV14(){
- if(
-  todayCreated()>=
-  capLimits().daily
- ){
-  alert(
-   'O limite diário de anúncios foi atingido.'
-  );
-
-  return
- }
-
- if(
-  weekCreated()>=
-  capLimits().weekly
- ){
-  alert(
-   'O limite semanal de anúncios foi atingido.'
-  );
-
-  return
- }
-
- if(
-  createMode==='top'&&
-  topCreatedToday()>=
-  capLimits().top
- ){
-  alert(
-   'O limite diário de TOP foi atingido.'
-  );
-
-  return
- }
-
- const q=
-  capBuildRequestV14();
-
- if(!q){
-  alert(
-   'Escolha um produto ou escreva o que quer anunciar.'
-  );
-
-  return
- }
-
- const btn=
-  document.getElementById(
-   'suggest'
-  );
-
- capButtonBusyV14(
-  btn,
-  true,
-  '✨ CRIAR ANÚNCIO',
-  'CRIANDO...'
- );
-
- try{
-  const ctrl=
-   new AbortController();
-
-  const timer=
-   setTimeout(
-    ()=>ctrl.abort(),
-    20000
-   );
-
-  let r;
-
-  try{
-   r=await fetch(
-    CAP_SERVER_V50+
-    '/api/ai/generate',
-    {
-     method:'POST',
-     signal:ctrl.signal,
-     headers:{
-      'Content-Type':
-       'application/json',
-      'Accept':
-       'application/json'
-     },
-     body:JSON.stringify({
-      prompt:
-       promptForGemini(q),
-
-      text:q,
-      pedido:q,
-
-      ramo:
-       store?.ramo||
-       store?.type||
-       '',
-
-      produto:
-       capSelectedProductV14(),
-
-      preco:
-       capCurrentPriceV14(),
-
-      top:
-       createMode==='top',
-
-      mentionStore:
-       document
-        .getElementById(
-         'mentionStore'
-        )
-        ?.checked===true,
-
-      fullCurrency:
-       document
-        .getElementById(
-         'fullCurrency'
-        )
-        ?.checked===true,
-
-      storeName:
-       store?.name||
-       '',
-
-      maxChars:150
-     })
-    }
-   );
-
-  }finally{
-   clearTimeout(timer)
-  }
-
-  let data={};
-
-  try{
-   data=await r.json()
-  }catch(e){}
-
-  if(!r.ok){
-   throw new Error(
-    data?.error||
-    data?.message||
-    (
-     'Servidor '+
-     r.status
-    )
-   )
-  }
-
-  let raw=
-   data?.text||
-   data?.frase||
-   data?.response||
-   data?.generated_text||
-   data?.data?.text||
-   '';
-
-  raw=String(raw||'')
-   .trim()
-   .replace(
-    /^```(?:json)?\s*/i,
-    ''
-   )
-   .replace(
-    /```$/,
-    ''
-   )
-   .trim()
-   .replace(
-    /^["']|["']$/g,
-    ''
-   );
-
-  if(!raw){
-   throw new Error(
-    'O servidor não retornou a frase.'
-   )
-  }
-
-  capSetGeneratedTextV14(
-   raw
-  );
-
-  document.body.dataset.v24stage=
-   'phrase';
-
- }catch(e){
-  console.error(e);
-
-  alert(
-   'Não foi possível criar agora.\n\n'+
-   (
-    e.name==='AbortError'
-     ?'Servidor demorou para responder.'
-     :e.message
-   )
-  );
-
- }finally{
-  capButtonBusyV14(
-   btn,
-   false,
-   '✨ CRIAR ANÚNCIO',
-   'CRIANDO...'
-  )
- }
-}
-
-function capBindGenerateV14(){
- const btn=
-  document.getElementById(
-   'suggest'
-  );
-
- if(!btn)return;
-
- btn.onclick=
-  capGenerateTextV14
-}
-
-document.addEventListener(
- 'DOMContentLoaded',
- capBindGenerateV14
-);
-
-function capStoreOpenNow(){
- const open=
-  document.getElementById(
-   'open'
-  )?.value||
-  defaults.open;
-
- const close=
-  document.getElementById(
-   'close'
-  )?.value||
-  defaults.close;
-
- if(!open||!close){
-  return true
- }
-
- const now=
-  new Date();
-
- const current=
-  now.getHours()*60+
-  now.getMinutes();
-
- const [oh,om]=
-  open.split(':')
-   .map(Number);
-
- const [ch,cm]=
-  close.split(':')
-   .map(Number);
-
- const start=
-  oh*60+om;
-
- const end=
-  ch*60+cm;
-
- if(start===end){
-  return true
- }
-
- if(start<end){
-  return (
-   current>=start&&
-   current<end
-  )
- }
-
- return (
-  current>=start||
-  current<end
- )
-}
-
-function capCheckSchedule(){
- if(!playing)return;
-
- if(!capStoreOpenNow()){
-  pauseRadio();
-
-  const t=
-   document.getElementById(
-    'nowTitle'
-   );
-
-  const s=
-   document.getElementById(
-    'nowSub'
-   );
-
-  if(t){
-   t.textContent=
-    'Fora do horário'
-  }
-
-  if(s){
-   s.textContent=
-    'A rádio volta no horário configurado.'
-  }
- }
-}
-
-setInterval(
- capCheckSchedule,
- 60000
-);
-
-function capFormatDuration(
- exp
-){
- if(!exp){
-  return 'sempre'
- }
-
- const diff=
-  exp-Date.now();
-
- if(diff<=0){
-  return 'expirado'
- }
-
- const days=
-  Math.ceil(
-   diff/86400000
-  );
-
- return days===1
-  ?'1 dia'
-  :days+' dias'
-}
-
-function capSyncExpiredAds(){
- if(!capClientReady)return;
-
- const before=
-  ads.length;
-
- const now=
-  Date.now();
-
- ads=
-  ads.filter(
-   a=>
-    !a.exp||
-    a.exp>now
-  );
-
- if(
-  before!==ads.length
- ){
-  saveAds()
- }
-}
-
-setInterval(
- capSyncExpiredAds,
- 60000
-);
-
-function capNormalizeRamoPackage(
- ramo
-){
- const packs=
-  admPackages();
-
- return (
-  packs[ramo]||
-  packs[
-   Object.keys(packs)
-    .find(
-     k=>
-      normRamo(k)===
-      normRamo(ramo)
-    )
-  ]||
-  {}
- )
-}
-
-function capApplyPackageDefaults(){
- if(!capClientReady)return;
-
- const pkg=
-  capNormalizeRamoPackage(
-   store.ramo
-  );
-
- if(!pkg)return;
-
- if(pkg.adsPerBlock){
-  setAdsPerBlock(
-   pkg.adsPerBlock,
-   false
-  )
- }
-}
-
-const capOldApplyPackage=
- applyAdmStore;
-
-applyAdmStore=function(c){
- capOldApplyPackage(c);
-
- setTimeout(
-  capApplyPackageDefaults,
-  0
- )
-};
-
-function capEscapeHtml(s){
- return String(s||'')
-  .replace(/&/g,'&amp;')
-  .replace(/</g,'&lt;')
-  .replace(/>/g,'&gt;')
-  .replace(/"/g,'&quot;')
-  .replace(/'/g,'&#039;')
-}
-
-function capShowClientHeader(){
- const name=
-  document.getElementById(
-   'storeName'
-  );
-
- if(name){
-  name.textContent=
-   store.name||
-   'Capivara Rádio'
- }
-}
-
-const capOldApplyHeader=
- applyAdmStore;
-
-applyAdmStore=function(c){
- capOldApplyHeader(c);
-
- setTimeout(
-  capShowClientHeader,
-  0
- )
-};
-
-function capSafeStopAudio(
- audio
-){
- if(!audio)return;
-
- try{
-  audio.pause();
-  audio.currentTime=0
- }catch(e){}
-}
-
-window.addEventListener(
- 'beforeunload',
- ()=>{
-  capSafeStopAudio(
-   radioAudio
-  );
-
-  capSafeStopAudio(
-   window.capCurrentSpokenAudio
-  );
-
-  capSafeStopAudio(
-   window.capCurrentBedAudio
-  )
- }
-);
-
-function capPreviewCurrentText(){
- const text=
-  capGetGeneratedTextV14();
-
- if(!text){
-  return
- }
-
- const el=
-  document.getElementById(
-   'text1'
-  );
-
- if(el){
-  el.value=text
- }
-}
-
-document.addEventListener(
- 'input',
- e=>{
-  if(
-   e.target?.id===
-   'brief'
-  ){
-   const v=
-    String(
-     e.target.value||
-     ''
-    )
-    .toLowerCase()
-    .slice(0,150);
-
-   if(e.target.value!==v){
-    e.target.value=v
-   }
-
-   const text1=
+  const vol=
+   +(
     document.getElementById(
-     'text1'
-    );
+     'musicVol'
+    )?.value||75
+   );
 
-   if(text1){
-    text1.value=v
-   }
-  }
- }
-);
-
-function capResetPendingAudio(){
- Object.keys(
-  pendingAudio||
-  {}
- ).forEach(k=>{
-  const p=
-   pendingAudio[k];
-
-  if(p?.url){
-   try{
-    URL.revokeObjectURL(
-     p.url
-    )
-   }catch(e){}
-  }
- });
-
- pendingAudio={}
-}
-
-function capClientLogout(){
- pauseRadio();
-
- capResetPendingAudio();
-
- capClientReady=false;
- ads=[];
- voiceTurn=0;
- selectedProduct='';
-
- const app=
-  document.getElementById(
-   'app'
-  );
-
- const login=
-  document.getElementById(
-   'login'
-  );
-
- if(app){
-  app.classList.add(
-   'hidden'
-  )
- }
-
- if(login){
-  login.classList.remove(
-   'hidden'
-  )
- }
-
- const code=
-  document.getElementById(
-   'code'
-  );
-
- if(code){
-  code.value='';
-  code.focus()
- }
-}
-
-window.capClientLogout=
- capClientLogout;
-
-function capRadioResume(){
- if(!playing)return;
-
- if(
-  radioAudio&&
-  radioAudio.paused
- ){
-  radioAudio.volume=
-   capAudioVolume();
-
-  radioAudio.play()
-   .catch(()=>{})
- }
-}
-
-document.addEventListener(
- 'visibilitychange',
- ()=>{
-  if(
-   document.visibilityState===
-   'visible'
-  ){
-   capRadioResume()
-  }
- }
-);
-
-function capRefreshAll(){
- if(!capClientReady)return;
-
- capLoadSettings();
- renderProducts();
- renderProductEditor();
- renderAds();
- renderCreatedAudiosV19();
- renderThemesV11();
- updateAdmStatus();
- refreshQuota();
- capSetPlayingUI()
-}
-
-window.capRefreshAll=
- capRefreshAll;
-
-document.addEventListener(
- 'DOMContentLoaded',
- ()=>{
-  refreshQuota();
-  renderThemesV11();
-  capSetPlayingUI()
- }
-);
-
-let capAdCursorV16=0,
-capBedCursorV36=0,
-capJingleCursorV36={
- open:0,
- close:0
-};
-
-function capModeCountV16(){
- const el=
-  document.getElementById(
-   'adsPerBlock'
-  );
-
- const c=(()=>{
-  try{
-   return JSON.parse(
-    localStorage.getItem(
-     'capivara_admin_settings'
-    )||'{}'
-   )
-  }catch(e){
-   return {}
-  }
- })();
-
- return Math.max(
-  1,
-  parseInt(
-   (
-    el&&el.value
-   )||
-   localStorage.getItem(
-    'cap_ads_per_block_'+
-    store.code
-   )||
-   c.defaultAdsPerBlock||
-   3,
-   10
-  )
- )
-}
-
-function capActiveAdsV16(){
- if(!capClientReady){
-  return []
- }
-
- let arr=[];
-
- try{
-  arr=JSON.parse(
-   localStorage.getItem(
-    capClientKey(
-     'cap_ads'
-    )
-   )||'[]'
-  )
- }catch(e){
-  arr=[]
- }
-
- if(!Array.isArray(arr)){
-  arr=[]
- }
-
- const now=
-  Date.now();
-
- return arr.filter(
-  a=>
-   a&&
-   a.paused!==true&&
-   a.active!==false&&
-   (
-    !a.exp||
-    a.exp>now
-   )&&
-   (
-    !a.expiresAt||
-    new Date(
-     a.expiresAt
-    ).getTime()>=now
-   )
- )
-}
-
-async function capPlayUrlV16(
- url,
- volume=1
-){
- if(!url){
-  return false
- }
-
- return await new Promise(
-  resolve=>{
-   const a=
-    new Audio(url);
-
-   window.capCurrentSpokenAudio=
-    a;
-
-   a.volume=
-    Math.max(
-     0,
-     Math.min(
-      1,
-      volume
-     )
-    );
-
-   let finished=false;
-
-   const done=ok=>{
-    if(finished)return;
-
-    finished=true;
-
-    a.onended=null;
-    a.onerror=null;
-
-    if(
-     window.capCurrentSpokenAudio===
-     a
-    ){
-     window.capCurrentSpokenAudio=
-      null
-    }
-
-    resolve(ok)
-   };
-
-   a.onended=
-    ()=>done(true);
-
-   a.onerror=
-    ()=>done(false);
-
-   a.play()
-    .catch(
-     ()=>done(false)
-    )
-  }
- )
-}
-
-async function capPlayAdV16(ad){
- if(!ad){
-  return false
- }
-
- const url=
-  ad.audioUrl||
-  ad.url||
-  ad.audio||
-  ad.src;
-
- if(url){
-  return await capPlayUrlV16(
-   url,
+  a.volume=
    Math.max(
     0,
     Math.min(
      1,
-     Number(
-      document.getElementById(
-       'adVol'
-      )?.value||
-      100
-     )/100
+     vol/100
     )
+   );
+
+  const title=
+   document.getElementById(
+    'nowTitle'
+   );
+
+  const sub=
+   document.getElementById(
+    'nowSub'
+   );
+
+  if(title){
+   title.textContent=
+    track.name||
+    'Música'
+  }
+
+  if(sub){
+   sub.textContent=
+    '🎵 '+
+    (
+     selectedPlaylist()?.name||
+     'Playlist'
+    )+
+    ' • '+
+    store.name
+  }
+
+  a.onended=()=>{
+   remoteAudioV53=null;
+
+   if(
+    typeof capRadioAfterMusicV16===
+    'function'
+   ){
+    capRadioAfterMusicV16()
+   }else{
+    playRemoteNext()
+   }
+  };
+
+  a.onerror=()=>{
+   remoteAudioV53=null;
+
+   if(!playing)return;
+
+   setTimeout(
+    playRemoteNext,
+    300
+   )
+  };
+
+  try{
+   await a.play()
+  }catch(e){
+   console.warn(
+    'Falha ao tocar música online:',
+    e
+   );
+
+   playing=false;
+   syncPlayUi();
+
+   const sub2=
+    document.getElementById(
+     'nowSub'
+    );
+
+   if(sub2){
+    sub2.textContent=
+     'Clique novamente em INICIAR RÁDIO.'
+   }
+  }
+ }
+
+ function playLocalFallback(){
+  try{
+   return originalPlayNextAdmMusicV53()
+  }catch(e){
+   console.warn(e);
+
+   const title=
+    document.getElementById(
+     'nowTitle'
+    );
+
+   const sub=
+    document.getElementById(
+     'nowSub'
+    );
+
+   if(title){
+    title.textContent=
+     'Sem músicas disponíveis'
+   }
+
+   if(sub){
+    sub.textContent=
+     'A rádio continua pronta para anúncios.'
+   }
+  }
+ }
+
+ const originalPlayNextAdmMusicV53=
+  playNextAdmMusic;
+
+ playNextAdmMusic=
+  async function(){
+   if(remotePlaylistsV53.length){
+    return playRemoteNext()
+   }
+
+   await fetchPlaylists();
+
+   if(remotePlaylistsV53.length){
+    return playRemoteNext()
+   }
+
+   return originalPlayNextAdmMusicV53()
+  };
+
+ const oldApplyAdmStoreV53=
+  applyAdmStore;
+
+ applyAdmStore=function(c){
+  oldApplyAdmStoreV53(c);
+
+  remotePlaylistIdV53=
+   localStorage.getItem(
+    playlistKey()
+   )||'';
+
+  remoteIndexV53=0;
+
+  setTimeout(
+   fetchPlaylists,
+   0
+  )
+ };
+
+ window.capRefreshPlaylistsV53=
+  fetchPlaylists;
+
+ window.capPlayRemoteNextV53=
+  playRemoteNext;
+
+ window.capHasRemotePlaylistV53=
+  ()=>remotePlaylistsV53.length>0;
+
+ window.capSelectedRemotePlaylistV53=
+  ()=>selectedPlaylist();
+
+ setTimeout(
+  fetchPlaylists,
+  600
+ )
+})();
+
+/* =========================================================
+   CAPIVARA PLAYER — BLOCO DE ANÚNCIOS / VINHETAS / FUNDOS
+========================================================= */
+
+let capAdCursorV16=0;
+let capJingleCursorV16={};
+let capBackgroundCursorV16=0;
+let capCurrentSpokenAudio=null;
+let capCurrentBedAudio=null;
+let capRadioBusyV16=false;
+
+function capMediaUrlV16(item){
+ if(!item)return '';
+
+ if(typeof item==='string'){
+  if(/^https?:\/\//i.test(item))return item;
+
+  return CAP_SERVER+
+   '/api/media/'+
+   encodeURIComponent(item)
+ }
+
+ const direct=
+  item.url||
+  item.audioUrl||
+  item.audio_url||
+  item.src||
+  item.streamUrl||
+  '';
+
+ if(direct)return direct;
+
+ const mediaId=
+  item.mediaId||
+  item.media_id||
+  item.fileId||
+  item.file_id||
+  '';
+
+ return mediaId
+  ?CAP_SERVER+
+   '/api/media/'+
+   encodeURIComponent(mediaId)
+  :''
+}
+
+function capNormalizeCollectionV16(raw){
+ if(Array.isArray(raw))return raw;
+
+ if(raw&&typeof raw==='object'){
+  return Object.values(raw)
+ }
+
+ return []
+}
+
+function capFindRamoObjectV16(all,ramo){
+ if(!all||typeof all!=='object')return null;
+
+ const wanted=normRamo(ramo);
+
+ const key=
+  Object.keys(all).find(
+   k=>normRamo(k)===wanted
+  );
+
+ return key?all[key]:null
+}
+
+async function capFetchAssetGroupV16(kind){
+ try{
+  const r=await fetch(
+   CAP_SERVER+'/api/'+kind,
+   {
+    cache:'no-store',
+    headers:{
+     'Accept':'application/json'
+    }
+   }
+  );
+
+  if(!r.ok)return {};
+
+  const j=await r.json();
+
+  return (
+   j?.[kind]??
+   j?.data?.[kind]??
+   j?.data??
+   {}
+  )
+ }catch(e){
+  console.warn(
+   kind+' indisponível:',
+   e
+  );
+
+  return {}
+ }
+}
+
+function capCategoryItemsV16(ramoData,category){
+ if(!ramoData)return [];
+
+ if(Array.isArray(ramoData)){
+  return ramoData.filter(
+   x=>x&&(
+    x.category===category||
+    x.cat===category||
+    x.type===category
    )
   )
+ }
+
+ const value=
+  ramoData[category]||
+  ramoData[
+   {
+    offerOpen:'open',
+    offerClose:'close',
+    topOpen:'topin',
+    topClose:'topout'
+   }[category]
+  ];
+
+ return capNormalizeCollectionV16(value)
+}
+
+async function capPlayUrlV16(url,volume=1){
+ if(!url)return false;
+
+ return new Promise(resolve=>{
+  const a=new Audio(url);
+
+  capCurrentSpokenAudio=a;
+
+  a.volume=
+   Math.max(
+    0,
+    Math.min(1,volume)
+   );
+
+  let done=false;
+
+  const finish=ok=>{
+   if(done)return;
+   done=true;
+
+   if(capCurrentSpokenAudio===a){
+    capCurrentSpokenAudio=null
+   }
+
+   resolve(ok)
+  };
+
+  a.onended=()=>finish(true);
+  a.onerror=()=>finish(false);
+
+  a.play()
+   .catch(()=>finish(false))
+ })
+}
+
+async function capPlayJingleV16(category){
+ const enabled=
+  document.getElementById('jingles')
+   ?.checked!==false;
+
+ if(!enabled)return false;
+
+ const all=
+  await capFetchAssetGroupV16(
+   'jingles'
+  );
+
+ const ramoData=
+  capFindRamoObjectV16(
+   all,
+   store.ramo||store.type
+  );
+
+ const list=
+  capCategoryItemsV16(
+   ramoData,
+   category
+  )
+  .filter(x=>capMediaUrlV16(x));
+
+ if(!list.length)return false;
+
+ const key=
+  normRamo(store.ramo)+
+  '|'+category;
+
+ const index=
+  capJingleCursorV16[key]||0;
+
+ capJingleCursorV16[key]=
+  (index+1)%list.length;
+
+ return capPlayUrlV16(
+  capMediaUrlV16(
+   list[index%list.length]
+  ),
+  1
+ )
+}
+
+async function capBackgroundListV16(){
+ const all=
+  await capFetchAssetGroupV16(
+   'backgrounds'
+  );
+
+ const ramoData=
+  capFindRamoObjectV16(
+   all,
+   store.ramo||store.type
+  );
+
+ return capNormalizeCollectionV16(
+  ramoData
+ ).filter(
+  x=>capMediaUrlV16(x)
+ )
+}
+
+async function capStartBackgroundV16(){
+ const list=
+  await capBackgroundListV16();
+
+ if(!list.length)return null;
+
+ const item=
+  list[
+   capBackgroundCursorV16%
+   list.length
+  ];
+
+ capBackgroundCursorV16++;
+
+ const url=
+  capMediaUrlV16(item);
+
+ if(!url)return null;
+
+ try{
+  const a=new Audio(url);
+
+  a.loop=true;
+
+  const vol=
+   +(
+    document.getElementById(
+     'bedVol'
+    )?.value||6
+   );
+
+  a.volume=
+   Math.max(
+    0,
+    Math.min(
+     1,
+     vol/100
+    )
+   );
+
+  await a.play();
+
+  capCurrentBedAudio=a;
+
+  return a
+ }catch(e){
+  return null
+ }
+}
+
+function capStopBackgroundV16(){
+ if(!capCurrentBedAudio)return;
+
+ try{
+  capCurrentBedAudio.pause();
+  capCurrentBedAudio.currentTime=0
+ }catch(e){}
+
+ capCurrentBedAudio=null
+}
+
+async function capPlayAdV16(ad){
+ if(!ad)return false;
+
+ let url=
+  capMediaUrlV16(ad);
+
+ if(url){
+  return capPlayUrlV16(url,1)
  }
 
  if(ad.audioKey){
@@ -3224,1793 +2747,2211 @@ async function capPlayAdV16(ad){
     );
 
    if(blob){
-    const u=
-     URL.createObjectURL(
-      blob
-     );
+    const local=
+     URL.createObjectURL(blob);
 
     const ok=
      await capPlayUrlV16(
-      u,
-      Math.max(
-       0,
-       Math.min(
-        1,
-        Number(
-         document.getElementById(
-          'adVol'
-         )?.value||
-         100
-        )/100
-       )
-      )
+      local,
+      1
      );
 
-    URL.revokeObjectURL(
-     u
-    );
+    URL.revokeObjectURL(local);
 
     return ok
    }
-  }catch(e){
-   console.error(e)
-  }
+  }catch(e){}
  }
 
  return false
 }
 
-function capOpenDbV36(
- name,
- version,
- storeName
-){
- return new Promise(
-  (ok,no)=>{
-   const r=
-    indexedDB.open(
-     name,
-     version,
-     storeName
+function capActiveAdsV16(){
+ const now=Date.now();
+
+ return ads.filter(a=>
+  a&&
+  !a.paused&&
+  (!a.exp||a.exp>now)
+ )
+}
+
+function capTakeAdsV16(){
+ const active=
+  capActiveAdsV16();
+
+ if(!active.length)return [];
+
+ const topIndex=
+  active.findIndex(a=>a.top);
+
+ if(topIndex>=0){
+  const top=active[topIndex];
+
+  if(!top._capPlayedToday||
+     top._capPlayedToday!==dayKey()){
+   top._capPlayedToday=dayKey();
+   saveAds();
+   return [top]
+  }
+ }
+
+ const normal=
+  active.filter(a=>!a.top);
+
+ if(!normal.length)return [];
+
+ const count=
+  Math.max(
+   1,
+   parseInt(
+    document.getElementById(
+     'adsPerBlock'
+    )?.value||3,
+    10
+   )
+  );
+
+ const out=[];
+
+ for(let i=0;i<count;i++){
+  if(!normal.length)break;
+
+  out.push(
+   normal[
+    capAdCursorV16%
+    normal.length
+   ]
+  );
+
+  capAdCursorV16++
+ }
+
+ return out
+}
+
+async function capPlayAdBlockV16(block){
+ if(!block.length)return false;
+
+ const top=
+  block.length===1&&
+  block[0]?.top;
+
+ const openCat=
+  top?'topOpen':'offerOpen';
+
+ const closeCat=
+  top?'topClose':'offerClose';
+
+ await capPlayJingleV16(
+  openCat
+ );
+
+ const bed=
+  await capStartBackgroundV16();
+
+ try{
+  for(const ad of block){
+   if(!playing)break;
+
+   await capPlayAdV16(ad)
+  }
+ }finally{
+  if(bed){
+   capStopBackgroundV16()
+  }
+ }
+
+ if(playing){
+  await capPlayJingleV16(
+   closeCat
+  )
+ }
+
+ return true
+}
+
+async function capContinueMusicV16(){
+ if(!playing)return;
+
+ if(
+  typeof window.capHasRemotePlaylistV53==='function'&&
+  window.capHasRemotePlaylistV53()&&
+  typeof window.capPlayRemoteNextV53==='function'
+ ){
+  return window.capPlayRemoteNextV53()
+ }
+
+ return playNextAdmMusic()
+}
+
+async function capRadioAfterMusicV16(){
+ if(capRadioBusyV16||!playing)return;
+
+ capRadioBusyV16=true;
+
+ try{
+  const block=
+   capTakeAdsV16();
+
+  if(block.length){
+   await capPlayAdBlockV16(
+    block
+   )
+  }
+ }catch(e){
+  console.warn(
+   'Bloco de anúncios:',
+   e
+  )
+ }finally{
+  capRadioBusyV16=false
+ }
+
+ if(playing){
+  capContinueMusicV16()
+ }
+}
+
+window.capRadioAfterMusicV16=
+ capRadioAfterMusicV16;
+
+/* =========================================================
+   TODAS AS PLAYLISTS PARA TODOS OS RAMOS
+   seleção individual por cliente
+========================================================= */
+
+(function(){
+ const oldBuild=
+  capBuildRemoteState;
+
+ capBuildRemoteState=function(){
+  const state=oldBuild();
+
+  state.selectedPlaylist=
+   localStorage.getItem(
+    'cap_remote_playlist_'+
+    String(store.code||'')
+   )||'';
+
+  return state
+ };
+
+ const oldApply=
+  capApplyRemoteState;
+
+ capApplyRemoteState=function(state){
+  oldApply(state);
+
+  if(
+   state?.selectedPlaylist&&
+   store?.code
+  ){
+   localStorage.setItem(
+    'cap_remote_playlist_'+
+    String(store.code),
+    state.selectedPlaylist
+   );
+  }
+ };
+})();
+
+/* =========================================================
+   RÁDIO SEM PLAYLIST
+   anúncios continuam funcionando mesmo sem música
+========================================================= */
+
+let capNoMusicTimerV16=null;
+
+function capScheduleNoMusicBlockV16(){
+ clearTimeout(capNoMusicTimerV16);
+
+ if(!playing)return;
+
+ const hasRemote=
+  typeof window.capHasRemotePlaylistV53==='function'&&
+  window.capHasRemotePlaylistV53();
+
+ const hasLocal=
+  themeMusicV11(
+   selectedThemeV11
+  ).length>0;
+
+ if(hasRemote||hasLocal)return;
+
+ capNoMusicTimerV16=
+  setTimeout(async()=>{
+   if(!playing)return;
+
+   const block=
+    capTakeAdsV16();
+
+   if(block.length){
+    await capPlayAdBlockV16(
+     block
+    )
+   }
+
+   capScheduleNoMusicBlockV16()
+  },60000)
+}
+
+const capOldSyncPlayUiV16=
+ syncPlayUi;
+
+syncPlayUi=function(){
+ capOldSyncPlayUiV16();
+
+ if(playing){
+  capScheduleNoMusicBlockV16()
+ }else{
+  clearTimeout(
+   capNoMusicTimerV16
+  );
+
+  try{
+   if(capCurrentSpokenAudio){
+    capCurrentSpokenAudio.pause()
+   }
+  }catch(e){}
+
+  capStopBackgroundV16()
+ }
+};
+
+/* =========================================================
+   VOLUME EM TEMPO REAL
+========================================================= */
+
+const capMusicVolumeV16=
+ document.getElementById(
+  'musicVol'
+ );
+
+if(capMusicVolumeV16){
+ capMusicVolumeV16.addEventListener(
+  'input',
+  ()=>{
+   const v=
+    Math.max(
+     0,
+     Math.min(
+      1,
+      +capMusicVolumeV16.value/100
+     )
     );
 
-   r.onsuccess=
-    ()=>ok(r.result);
-
-   r.onerror=
-    ()=>no(r.error)
+   if(radioAudio){
+    radioAudio.volume=v
+   }
   }
  )
 }
 
-async function capGetDbBlobV36(
- dbName,
- version,
- storeName,
- key
-){
- try{
-  const db=
-   await capOpenDbV36(
-    dbName,
-    version,
-    storeName
-   );
+const capBedVolumeV16=
+ document.getElementById(
+  'bedVol'
+ );
 
-  return await new Promise(
-   (ok,no)=>{
-    const q=
-     db.transaction(
-      storeName
+if(capBedVolumeV16){
+ capBedVolumeV16.addEventListener(
+  'input',
+  ()=>{
+   if(capCurrentBedAudio){
+    capCurrentBedAudio.volume=
+     Math.max(
+      0,
+      Math.min(
+       1,
+       +capBedVolumeV16.value/100
+      )
      )
-     .objectStore(
-      storeName
-     )
-     .get(key);
-
-    q.onsuccess=
-     ()=>ok(
-      q.result||
-      null
-     );
-
-    q.onerror=
-     ()=>no(q.error)
    }
-  );
-
- }catch(e){
-  return null
- }
+  }
+ )
 }
 
 /* =========================================================
-   VINHETAS
-   ESTA É A PARTE QUE VAMOS CORRIGIR SEM MEXER NO RESTO
+   INICIALIZAÇÃO FINAL
 ========================================================= */
 
-let capOnlineJinglesV51=[];
-let capOnlineJinglesLoadedV51=0;
+setTimeout(()=>{
+ try{
+  renderProducts();
+  renderProductEditor();
+  renderAds();
+  renderCreatedAudiosV19();
+  renderThemesV11();
+  refreshQuota();
+  capStageV21('start')
+ }catch(e){
+  console.error(
+   'Inicialização Capivara:',
+   e
+  )
+ }
+},700);
+ /* =========================================================
+   CAPIVARA RÁDIO PLAYER
+   PARTE 3/3
+   FINALIZAÇÃO + CORREÇÕES DE FLUXO
+========================================================= */
 
-function capNormJingleV51(v){
- return String(v||'')
-  .normalize('NFD')
-  .replace(/[\u0300-\u036f]/g,'')
-  .trim()
-  .toLowerCase()
-}
+/* =========================================================
+   PLAYLIST — TODAS DISPONÍVEIS PARA QUALQUER RAMO
+========================================================= */
 
-async function capLoadOnlineJinglesV51(
- force=false
-){
- if(
-  !force&&
-  capOnlineJinglesLoadedV51&&
-  (
-   Date.now()-
-   capOnlineJinglesLoadedV51
-  )<30000
- ){
-  return capOnlineJinglesV51
+(function(){
+
+ const SERVER=
+  'https://capivara-radio-server.onrender.com';
+
+ let capAllPlaylists=[];
+ let capPlaylistCurrent='';
+ let capPlaylistTracks=[];
+ let capPlaylistTrackIndex=0;
+ let capOnlineMusic=null;
+ let capPlaylistLoading=false;
+
+ function cleanArray(v){
+  return Array.isArray(v)?v:[]
  }
 
- try{
-  const r=
-   await fetch(
-    CAP_SERVER_V50+
-    '/api/jingles',
+ function normalizePlaylists(raw){
+
+  let source=raw;
+
+  if(
+   source &&
+   typeof source==='object' &&
+   !Array.isArray(source)
+  ){
+   if(Array.isArray(source.playlists)){
+    source=source.playlists
+   }else if(
+    source.data &&
+    Array.isArray(source.data.playlists)
+   ){
+    source=source.data.playlists
+   }else if(Array.isArray(source.data)){
+    source=source.data
+   }else{
+    source=
+     Object.entries(source)
+      .map(([id,p])=>({
+       id,
+       ...(p||{})
+      }))
+   }
+  }
+
+  return cleanArray(source)
+   .map((p,i)=>{
+
+    p=p||{};
+
+    let tracks=
+     p.tracks||
+     p.musics||
+     p.music||
+     p.songs||
+     p.items||
+     p.faixas||
+     [];
+
+    if(!Array.isArray(tracks)){
+     tracks=[]
+    }
+
+    tracks=
+     tracks.map((t,j)=>{
+
+      if(typeof t==='string'){
+       return {
+        id:'track_'+j,
+        name:'Música '+(j+1),
+        url:t
+       }
+      }
+
+      t=t||{};
+
+      const mediaId=
+       t.mediaId||
+       t.media_id||
+       t.fileId||
+       t.file_id||
+       '';
+
+      const direct=
+       t.url||
+       t.audioUrl||
+       t.audio_url||
+       t.src||
+       t.streamUrl||
+       '';
+
+      return {
+       ...t,
+
+       id:
+        t.id||
+        mediaId||
+        ('track_'+j),
+
+       name:
+        t.name||
+        t.title||
+        t.nome||
+        t.filename||
+        ('Música '+(j+1)),
+
+       url:
+        direct||
+        (
+         mediaId
+          ?SERVER+
+           '/api/media/'+
+           encodeURIComponent(mediaId)
+          :''
+        )
+      }
+
+     }).filter(t=>t.url);
+
+    return {
+     ...p,
+
+     id:String(
+      p.id||
+      p.key||
+      p.slug||
+      p.name||
+      p.title||
+      ('playlist_'+i)
+     ),
+
+     name:
+      p.name||
+      p.title||
+      p.nome||
+      ('Playlist '+(i+1)),
+
+     tracks
+    }
+
+   })
+   .filter(p=>p.tracks.length)
+ }
+
+ function playlistStorageKey(){
+  return (
+   'cap_playlist_cliente_'+
+   String(store?.code||'')
+  )
+ }
+
+ function selectedPlaylist(){
+  return capAllPlaylists.find(
+   p=>p.id===capPlaylistCurrent
+  )||null
+ }
+
+ async function loadAllPlaylists(){
+
+  if(capPlaylistLoading)return;
+
+  capPlaylistLoading=true;
+
+  try{
+
+   const r=await fetch(
+    SERVER+'/api/playlists',
     {
      cache:'no-store',
      headers:{
-      'Accept':
-       'application/json'
+      'Accept':'application/json'
      }
     }
    );
 
-  if(!r.ok){
-   return []
-  }
-
-  const data=
-   await r.json();
-
-  const raw=
-   data?.jingles||
-   data?.data||
-   data||
-   [];
-
-  if(Array.isArray(raw)){
-   capOnlineJinglesV51=
-    raw
-  }else{
-   capOnlineJinglesV51=
-    [];
-
-   Object.entries(raw)
-    .forEach(
-     ([ramo,cats])=>{
-      if(
-       !cats||
-       typeof cats!==
-       'object'
-      ){
-       return
-      }
-
-      Object.entries(cats)
-       .forEach(
-        ([category,items])=>{
-         const list=
-          Array.isArray(items)
-           ?items
-           :items
-            ?[items]
-            :[];
-
-         list.forEach(
-          item=>{
-           if(
-            item&&
-            typeof item===
-            'object'
-           ){
-            capOnlineJinglesV51
-             .push({
-              ...item,
-              ramo:
-               item.ramo||
-               ramo,
-              category:
-               item.category||
-               item.categoria||
-               category
-             })
-           }
-          }
-         )
-        }
-       )
-     }
+   if(!r.ok){
+    throw new Error(
+     'Servidor '+r.status
     )
-  }
-
-  capOnlineJinglesLoadedV51=
-   Date.now();
-
-  return capOnlineJinglesV51
-
- }catch(e){
-  console.warn(
-   'Vinhetas online:',
-   e
-  );
-
-  return []
- }
-}
-
-function capJingleCategoryV51(v){
- return capNormJingleV51(
-  v?.category||
-  v?.categoria||
-  v?.type||
-  v?.tipo||
-  v?.slot||
-  v?.group||
-  ''
- )
-}
-
-function capJingleRamoV51(v){
- return capNormJingleV51(
-  v?.ramo||
-  v?.segment||
-  v?.activity||
-  v?.businessType||
-  ''
- )
-}
-
-function capJingleMatchesRamoV51(v){
- const vr=
-  capJingleRamoV51(v);
-
- if(!vr){
-  return true
- }
-
- const sr=
-  capNormJingleV51(
-   store?.ramo||
-   store?.type||
-   ''
-  );
-
- return vr===sr
-}
-
-function capJingleMatchesKindV51(
- v,
- kind
-){
- const c=
-  capJingleCategoryV51(v);
-
- if(kind==='opening'){
-  return (
-   !c.includes('top')&&
-   (
-    c.includes('offeropen')||
-    c.includes('entrada')||
-    c.includes('opening')||
-    c.includes('abertura')||
-    c.includes('inicio')
-   )
-  )
- }
-
- if(kind==='closing'){
-  return (
-   !c.includes('top')&&
-   (
-    c.includes('offerclose')||
-    c.includes('saida')||
-    c.includes('closing')||
-    c.includes('fechamento')||
-    c.includes('fim')
-   )
-  )
- }
-
- return false
-}
-
-function capJingleUrlV51(v){
- if(!v){
-  return ''
- }
-
- const direct=
-  v.audioUrl||
-  v.audio_url||
-  v.url||
-  v.src||
-  v.fileUrl;
-
- if(direct){
-  if(
-   /^https?:\/\//i.test(
-    direct
-   )
-  ){
-   return direct
-  }
-
-  return (
-   CAP_SERVER_V50+
-   (
-    String(direct)
-     .startsWith('/')
-     ?''
-     :'/'
-   )+
-   direct
-  )
- }
-
- const mediaId=
-  v.mediaId||
-  v.media_id||
-  v.audioId||
-  v.audio_id||
-  v.fileId||
-  v.file_id;
-
- if(mediaId){
-  return (
-   CAP_SERVER_V50+
-   '/api/media/'+
-   encodeURIComponent(
-    mediaId
-   )
-  )
- }
-
- return ''
-}
-
-async function capOptionalJingleV16(
- kind
-){
- const enabled=
-  document.getElementById(
-   'jingles'
-  )?.checked===true;
-
- if(!enabled){
-  return false
- }
-
- try{
-  const online=
-   await capLoadOnlineJinglesV51();
-
-  const ready=
-   online.filter(
-    v=>
-     v&&
-     v.active!==false&&
-     v.ativo!==false&&
-     v.paused!==true&&
-     v.pausado!==true&&
-     capJingleMatchesRamoV51(v)&&
-     capJingleMatchesKindV51(
-      v,
-      kind
-     )
-   );
-
-  if(ready.length){
-   const ck=
-    kind==='opening'
-     ?'open'
-     :'close';
-
-   const v=
-    ready[
-     capJingleCursorV36[
-      ck
-     ]++%
-     ready.length
-    ];
-
-   const url=
-    capJingleUrlV51(v);
-
-   if(url){
-    const ok=
-     await capPlayUrlV16(
-      url,
-      1
-     );
-
-    if(ok){
-     return true
-    }
    }
-  }
 
-  const all=
-   JSON.parse(
+   const j=await r.json();
+
+   const raw=
+    j?.playlists??
+    j?.data?.playlists??
+    j?.data??
+    {};
+
+   capAllPlaylists=
+    normalizePlaylists(raw);
+
+   const saved=
     localStorage.getItem(
-     'capivara_vignettes_v8'
-    )||'{}'
+     playlistStorageKey()
+    )||'';
+
+   if(
+    saved &&
+    capAllPlaylists.some(
+     p=>p.id===saved
+    )
+   ){
+    capPlaylistCurrent=saved
+   }else{
+    capPlaylistCurrent=
+     capAllPlaylists[0]?.id||
+     ''
+   }
+
+   applyPlaylist();
+   renderPlaylistChooser();
+
+  }catch(e){
+
+   console.warn(
+    'Falha ao carregar playlists:',
+    e
    );
 
-  const ramo=
-   all[store.ramo]||
-   all[store.type]||
-   {};
+   capAllPlaylists=[];
+   capPlaylistTracks=[];
+   renderPlaylistChooser()
 
-  const cat=
-   kind==='opening'
-    ?'offerOpen'
-    :'offerClose';
+  }finally{
+   capPlaylistLoading=false
+  }
+ }
 
-  const arr=
-   Array.isArray(
-    ramo[cat]
-   )
-    ?ramo[cat]
+ function applyPlaylist(){
+
+  const p=
+   selectedPlaylist();
+
+  capPlaylistTracks=
+   p
+    ?[...p.tracks]
     :[];
 
-  const localReady=
-   arr.filter(
-    v=>v&&v.audioKey
-   );
-
-  if(localReady.length){
-   const ck=
-    kind==='opening'
-     ?'open'
-     :'close';
-
-   const v=
-    localReady[
-     capJingleCursorV36[
-      ck
-     ]++%
-     localReady.length
-    ];
-
-   const blob=
-    await capGetDbBlobV36(
-     'CapivaraRadioAudio',
-     1,
-     'audios',
-     v.audioKey
-    );
-
-   if(blob){
-    const u=
-     URL.createObjectURL(
-      blob
-     );
-
-    const ok=
-     await capPlayUrlV16(
-      u,
-      1
-     );
-
-    URL.revokeObjectURL(
-     u
-    );
-
-    if(ok){
-     return true
-    }
-   }
+  if(
+   capPlaylistTrackIndex>=
+   capPlaylistTracks.length
+  ){
+   capPlaylistTrackIndex=0
   }
 
-  const legacy=
-   JSON.parse(
-    localStorage.getItem(
-     'capivara_radio_jingles'
-    )||'{}'
-   );
-
-  const j=
-   legacy[kind];
-
-  if(
-   j&&
-   !j.paused&&
-   j.active!==false
-  ){
-   return await capPlayUrlV16(
-    j.audioUrl||
-    j.url||
-    j.src,
-    1
+  if(capPlaylistCurrent){
+   localStorage.setItem(
+    playlistStorageKey(),
+    capPlaylistCurrent
    )
   }
 
- }catch(e){
-  console.error(
-   'Vinheta:',
-   e
-  )
+  if(p){
+   selectedThemeV11=p.name;
+
+   localStorage.setItem(
+    'capivara_theme_'+
+    String(store.code),
+    p.name
+   )
+  }
+
+  renderThemesV11();
+  updateAdmStatus()
  }
 
- return false
-}
+ function findPlaylistHost(){
 
-async function capStartBedV36(){
- try{
-  const bg=
-   JSON.parse(
-    localStorage.getItem(
-     'capivara_backgrounds_v9'
-    )||'[]'
+  let host=
+   document.getElementById(
+    'capPlaylistChooserFinal'
    );
+
+  if(host)return host;
+
+  const themes=
+   document.getElementById(
+    'themeButtonsV11'
+   );
+
+  if(!themes)return null;
+
+  host=
+   document.createElement('div');
+
+  host.id=
+   'capPlaylistChooserFinal';
+
+  host.style.cssText=
+   [
+    'margin:14px 0',
+    'padding:14px',
+    'border:1px solid #dce7df',
+    'border-radius:14px',
+    'background:#fff'
+   ].join(';');
+
+  themes.parentElement.insertBefore(
+   host,
+   themes
+  );
+
+  return host
+ }
+
+ function renderPlaylistChooser(){
+
+  const host=
+   findPlaylistHost();
+
+  if(!host)return;
+
+  if(!capAllPlaylists.length){
+
+   host.innerHTML=
+    '<b>🎵 Playlist</b>'+
+    '<div style="margin-top:6px;font-size:13px;opacity:.7">'+
+    'Nenhuma playlist disponível.'+
+    '</div>';
+
+   return
+  }
+
+  host.innerHTML=
+   '<label style="display:block;font-weight:900;margin-bottom:8px">'+
+   '🎵 Escolha sua playlist'+
+   '</label>'+
+   '<select id="capPlaylistSelectFinal" '+
+   'style="width:100%;padding:12px;border:1px solid #d4dfd8;border-radius:11px;background:#fff;font-weight:700">'+
+
+   capAllPlaylists.map(p=>
+    '<option value="'+
+    String(p.id)
+     .replace(/&/g,'&amp;')
+     .replace(/"/g,'&quot;')+
+    '" '+
+    (
+     p.id===capPlaylistCurrent
+      ?'selected'
+      :''
+    )+
+    '>'+
+    String(p.name)
+     .replace(/&/g,'&amp;')
+     .replace(/</g,'&lt;')+
+    ' • '+
+    p.tracks.length+
+    ' música'+
+    (
+     p.tracks.length===1
+      ?''
+      :'s'
+    )+
+    '</option>'
+
+   ).join('')+
+
+   '</select>';
+
+  const sel=
+   document.getElementById(
+    'capPlaylistSelectFinal'
+   );
+
+  if(sel){
+
+   sel.onchange=()=>{
+
+    capPlaylistCurrent=
+     sel.value;
+
+    capPlaylistTrackIndex=0;
+
+    applyPlaylist();
+
+    if(
+     typeof capPushClientStateV50===
+     'function'
+    ){
+     capPushClientStateV50()
+    }
+
+    if(playing){
+
+     try{
+      if(capOnlineMusic){
+       capOnlineMusic.pause();
+       capOnlineMusic=null
+      }
+     }catch(e){}
+
+     playPlaylistMusic()
+    }
+   }
+  }
+ }
+
+ async function playPlaylistMusic(){
+
+  if(!playing)return;
+
+  if(!capPlaylistTracks.length){
+
+   await loadAllPlaylists();
+
+   if(!capPlaylistTracks.length){
+
+    if(
+     typeof capScheduleNoMusicBlockV16===
+     'function'
+    ){
+     capScheduleNoMusicBlockV16()
+    }
+
+    const title=
+     document.getElementById(
+      'nowTitle'
+     );
+
+    const sub=
+     document.getElementById(
+      'nowSub'
+     );
+
+    if(title){
+     title.textContent=
+      'Rádio ligada'
+    }
+
+    if(sub){
+     sub.textContent=
+      'Aguardando programação'
+    }
+
+    return
+   }
+  }
 
   if(
-   !Array.isArray(bg)||
-   !bg.length
+   capPlaylistTrackIndex>=
+   capPlaylistTracks.length
   ){
-   return null
+   capPlaylistTrackIndex=0
   }
 
-  const meta=
-   bg[
-    capBedCursorV36++%
-    bg.length
+  const track=
+   capPlaylistTracks[
+    capPlaylistTrackIndex++
    ];
 
-  const blob=
-   await capGetDbBlobV36(
-    'CapivaraAcervoV9',
-    1,
-    'files',
-    'bg:'+meta.id
+  if(!track?.url){
+
+   setTimeout(
+    playPlaylistMusic,
+    250
    );
 
-  if(!blob){
-   return null
+   return
   }
 
-  const u=
-   URL.createObjectURL(
-    blob
+  try{
+
+   if(capOnlineMusic){
+    capOnlineMusic.pause()
+   }
+
+  }catch(e){}
+
+  const audio=
+   new Audio(track.url);
+
+  capOnlineMusic=audio;
+
+  const musicVolume=
+   +(
+    document.getElementById(
+     'musicVol'
+    )?.value||75
    );
 
-  const a=
-   new Audio(u);
-
-  window.capCurrentBedAudio=
-   a;
-
-  a.loop=true;
-
-  a.volume=
+  audio.volume=
    Math.max(
     0,
     Math.min(
      1,
-     +(
-      document.getElementById(
-       'bedVol'
-      )?.value||
-      6
-     )/100
+     musicVolume/100
     )
    );
 
-  a._capUrl=u;
+  const title=
+   document.getElementById(
+    'nowTitle'
+   );
 
-  await a.play()
-   .catch(()=>{});
+  const sub=
+   document.getElementById(
+    'nowSub'
+   );
 
-  return a
-
- }catch(e){
-  console.error(
-   'Fundo:',
-   e
-  );
-
-  return null
- }
-}
-
-function capStopBedV36(a){
- if(!a)return;
-
- try{
-  a.pause();
-  a.currentTime=0;
-
-  if(
-   window.capCurrentBedAudio===
-   a
-  ){
-   window.capCurrentBedAudio=
-    null
+  if(title){
+   title.textContent=
+    track.name||
+    'Música'
   }
 
-  if(a._capUrl){
-   URL.revokeObjectURL(
-    a._capUrl
-   )
-  }
-
- }catch(e){}
-}
-
-async function capRadioAfterMusicV16(){
- const active=
-  capActiveAdsV16();
-
- if(!active.length){
-  playNextAdmMusic();
-  return
- }
-
- const qty=
-  Math.min(
-   capModeCountV16(),
-   active.length
-  );
-
- const block=[];
-
- for(
-  let i=0;
-  i<qty;
-  i++
- ){
-  block.push(
-   active[
+  if(sub){
+   sub.textContent=
+    '🎵 '+
     (
-     capAdCursorV16+i
-    )%
-    active.length
-   ]
-  )
- }
-
- capAdCursorV16=
-  (
-   capAdCursorV16+
-   qty
-  )%
-  active.length;
-
- const title=
-  document.getElementById(
-   'nowTitle'
-  );
-
- const sub=
-  document.getElementById(
-   'nowSub'
-  );
-
- if(title){
-  title.textContent=
-   'Bloco comercial'
- }
-
- if(sub){
-  sub.textContent=
-   document.getElementById(
-    'jingles'
-   )?.checked
-    ?'Vinheta de entrada'
-    :'Bloco comercial'
- }
-
- await capOptionalJingleV16(
-  'opening'
- );
-
- if(sub){
-  sub.textContent=
-   'Anúncios no ar • fundo de locução'
- }
-
- const bed=
-  await capStartBedV36();
-
- try{
-  for(
-   const ad of block
-  ){
-   await capPlayAdV16(
-    ad
-   )
+     selectedPlaylist()?.name||
+     'Playlist'
+    )+
+    ' • '+
+    store.name
   }
 
- }finally{
-  capStopBedV36(
-   bed
-  )
- }
+  audio.onended=()=>{
 
- if(sub){
-  sub.textContent=
-   document.getElementById(
-    'jingles'
-   )?.checked
-    ?'Vinheta de saída'
-    :'Fim do bloco'
- }
-
- await capOptionalJingleV16(
-  'closing'
- );
-
- playNextAdmMusic()
-}
-````
-function renderCreatedAudiosV19(){
- const box=document.getElementById('createdAudiosV19');
-
- if(!box)return;
-
- if(!capClientReady||!ads.length){
-  box.innerHTML='<div class="empty">Nenhum áudio criado.</div>';
-  return
- }
-
- box.innerHTML='';
-
- [...ads].reverse().forEach(a=>{
-  const row=document.createElement('div'),
-  female=(a.voice||'').toLowerCase().includes('femin');
-
-  row.className='created-audio-v19 '+(female?'female':'male');
-
-  row.innerHTML=
-   `<div><b>${a.label||a.product||'anúncio'}</b><small>${female?'Mulher':'Homem'} • ${a.paused?'Pausado':'Na programação'}</small></div><button type="button">▶</button>`;
-
-  row.querySelector('button').onclick=async()=>{
-   if(a.audioKey){
-    const blob=await capGetAdBlob(a.audioKey);
-
-    if(blob){
-     const u=URL.createObjectURL(blob),
-     au=new Audio(u);
-
-     au.onended=()=>URL.revokeObjectURL(u);
-     au.play().catch(()=>{})
-    }
-
-   }else if(a.audioUrl){
-    new Audio(a.audioUrl).play().catch(()=>{})
+   if(capOnlineMusic===audio){
+    capOnlineMusic=null
    }
-  };
 
-  box.appendChild(row)
- })
-}
-
-window.addEventListener(
- 'DOMContentLoaded',
- renderCreatedAudiosV19
-);
-
-function capResetCreateV20(){
- selectedProduct='';
-
- document.querySelectorAll(
-  '#favorites button'
- ).forEach(
-  x=>x.classList.remove('selected')
- );
-
- const selected=
-  document.getElementById('selectedProduct');
-
- if(selected){
-  selected.classList.add('hidden')
- }
-
- const price=
-  document.getElementById('price');
-
- if(price){
-  price.value=''
- }
-
- const brief=
-  document.getElementById('brief');
-
- if(brief){
-  brief.value=''
- }
-
- const t1=
-  document.getElementById('text1');
-
- if(t1){
-  t1.value=''
- }
-
- const sug=
-  document.getElementById('suggestions');
-
- if(sug){
-  sug.classList.add('hidden')
- }
-
- ['1','2'].forEach(n=>{
-  if(pendingAudio[n]?.url){
-   try{
-    URL.revokeObjectURL(
-     pendingAudio[n].url
-    )
-   }catch(e){}
-  }
-
-  pendingAudio[n]=null;
-
-  const a=
-   document.getElementById(
-    'audio'+n
-   );
-
-  if(a){
-   a.pause();
-   a.removeAttribute('src')
-  }
-
-  const ac=
-   document.getElementById(
-    'actions'+n
-   );
-
-  if(ac){
-   ac.classList.add('hidden')
-  }
- })
-}
-
-function capOfficialVoiceIdsV49(){
- return {
-  adMale:'',
-  adFemale:'',
-  jingleMale:'',
-  jingleFemale:''
- }
-}
-
-function capVoiceIdForV49(){
- return ''
-}
-
-function capStageV21(stage){
- document.body.dataset.capstage=
-  stage;
-
- const sug=
-  document.getElementById(
-   'suggestions'
-  );
-
- if(stage==='start'&&sug){
-  sug.classList.add('hidden')
- }
-
- const gen=
-  document.querySelector(
-   '[data-gen="1"]'
-  );
-
- const actions=
-  document.getElementById(
-   'actions1'
-  );
-
- if(gen){
-  gen.classList.toggle(
-   'pulse-v21',
-   stage==='phrase'
-  );
-
-  gen.textContent=
-   stage==='phrase'
-    ?'🔊 GERAR ÁUDIO'
-    :'GERAR ÁUDIO'
- }
-
- if(actions){
-  actions.classList.toggle(
-   'hidden',
-   stage!=='audio'
-  );
-
-  actions.classList.toggle(
-   'confirm-v21',
-   stage==='audio'
-  )
- }
-}
-
-function capDiscardV21(){
- if(pendingAudio[1]?.url){
-  try{
-   URL.revokeObjectURL(
-    pendingAudio[1].url
-   )
-  }catch(e){}
- }
-
- pendingAudio[1]=null;
-
- const a=
-  document.getElementById(
-   'audio1'
-  );
-
- if(a){
-  a.pause();
-  a.removeAttribute('src')
- }
-
- capResetCreateV20();
- capStageV21('start')
-}
-
-window.addEventListener(
- 'DOMContentLoaded',
- ()=>{
-  capStageV21('start');
-
-  const actions=
-   document.getElementById(
-    'actions1'
-   );
-
-  if(
-   actions&&
-   !document.getElementById(
-    'discardV21'
-   )
-  ){
-   const no=
-    document.createElement(
-     'button'
-    );
-
-   no.type='button';
-   no.id='discardV21';
-   no.className='discard-v21';
-   no.textContent='🗑 DESCARTAR';
-   no.onclick=capDiscardV21;
-
-   actions.appendChild(no)
-  }
- }
-);
-
-function capV25SetMainButtons(show){
- const create=
-  document.getElementById(
-   'suggest'
-  );
-
- if(create){
-  create.style.display=
-   show?'':'none'
- }
-
- document
-  .querySelectorAll('button')
-  .forEach(b=>{
    if(
-    /top do dia/i.test(
-     (b.textContent||'').trim()
-    )
+    typeof capRadioAfterMusicV16===
+    'function'
    ){
-    b.style.display=
-     show?'':'none'
+    capRadioAfterMusicV16()
+   }else{
+    playPlaylistMusic()
    }
-  })
-}
-
-function capSetPhraseStageV25(){
- document.body.dataset.v24stage=
-  'phrase';
-
- capV25SetMainButtons(false);
-
- const audioBtn=
-  document.getElementById(
-   'generateAudioV24'
-  );
-
- if(audioBtn){
-  audioBtn.style.display='';
-  audioBtn.classList.add(
-   'pulse-v22'
-  )
- }
-
- const desist=
-  document.getElementById(
-   'desistV25'
-  );
-
- if(desist){
-  desist.style.display=''
- }
-}
-
-function capSetStartStageV25(
- keepText=false
-){
- document.body.dataset.v24stage=
-  'start';
-
- capV25SetMainButtons(true);
-
- const audioBtn=
-  document.getElementById(
-   'generateAudioV24'
-  );
-
- if(audioBtn){
-  audioBtn.classList.remove(
-   'pulse-v22'
-  )
- }
-
- const desist=
-  document.getElementById(
-   'desistV25'
-  );
-
- if(desist){
-  desist.style.display='none'
- }
-
- if(!keepText){
-  const brief=
-   document.getElementById(
-    'brief'
-   );
-
-  if(brief){
-   brief.value=''
-  }
- }
-}
-
-async function capGenerateQueueV24(){
- if(window.capV24busy)return;
-
- window.capV24busy=true;
-
- const btn=
-  document.getElementById(
-   'generateAudioV24'
-  );
-
- try{
-  if(btn){
-   btn.disabled=true;
-   btn.textContent=
-    'GERANDO ÁUDIO...'
-  }
-
-  const text=
-   (
-    document.getElementById(
-     'brief'
-    )?.value||
-    ''
-   )
-   .trim()
-   .toLowerCase()
-   .slice(0,150);
-
-  if(!text){
-   throw new Error(
-    'O texto do anúncio está vazio.'
-   )
-  }
-
-  if(
-   todayCreated()>=
-   capLimits().daily
-  ){
-   throw new Error(
-    'O limite diário de anúncios foi atingido.'
-   )
-  }
-
-  if(
-   weekCreated()>=
-   capLimits().weekly
-  ){
-   throw new Error(
-    'O limite semanal de anúncios foi atingido.'
-   )
-  }
-
-  if(
-   createMode==='top'&&
-   topCreatedToday()>=
-   capLimits().top
-  ){
-   throw new Error(
-    'O limite diário de TOP foi atingido.'
-   )
-  }
-
-  const pa=
-   await capGenerateAudioDirectV201(
-    capTextForSpeechV14(text)
-   );
-
-  const days=
-   +(
-    document.getElementById(
-     'duration'
-    )?.value||
-    1
-   );
-
-  const exp=
-   Date.now()+
-   (
-    Math.max(
-     1,
-     days||1
-    )*
-    86400000
-   );
-
-  const id=
-   'ad_'+
-   Date.now()+
-   '_'+
-   Math.random()
-    .toString(36)
-    .slice(2,7);
-
-  const audioKey=
-   capClientAudioKey(id);
-
-  await capSaveAdBlob(
-   audioKey,
-   pa.blob
-  );
-
-  ads.push({
-   id,
-   label:pa.label,
-   product:pa.product,
-   price:pa.price,
-   text,
-   voice:pa.voice,
-   paused:false,
-   exp,
-   audioKey,
-   top:!!pa.top,
-   createdDay:dayKey()
-  });
-
-  registerUse(
-   !!pa.top
-  );
-
-  voiceTurn=
-   (voiceTurn+1)%2;
-
-  localStorage.setItem(
-   capClientKey(
-    'cap_voice'
-   ),
-   String(voiceTurn)
-  );
-
-  saveAds();
-  renderCreatedAudiosV19();
-
-  if(pa.top){
-   setCreateMode('normal')
-  }
-
-  capResetCreateV20();
-  capSetStartStageV25(false);
-
- }catch(e){
-  console.error(e);
-
-  alert(
-   'Não foi possível gerar o áudio.\n\n'+
-   (e.message||e)
-  );
-
- }finally{
-  window.capV24busy=false;
-
-  if(btn){
-   btn.disabled=false;
-   btn.textContent=
-    '🔊 GERAR ÁUDIO'
-  }
- }
-}
-
-window.addEventListener(
- 'DOMContentLoaded',
- ()=>{
-  document.body.dataset.v24stage=
-   'start';
-
-  const b=
-   document.getElementById(
-    'generateAudioV24'
-   );
-
-  if(b){
-   b.onclick=
-    capGenerateQueueV24
-  }
-
-  const desist=
-   document.getElementById(
-    'desistV25'
-   );
-
-  if(desist){
-   desist.onclick=()=>{
-    /*
-      DESISTIR NÃO APAGA A FRASE.
-      Apenas volta para o início.
-    */
-    capSetStartStageV25(true)
-   }
-  }
-
-  const clean=()=>{
-   document
-    .querySelectorAll(
-     'button'
-    )
-    .forEach(x=>{
-     if(
-      /gerar outra/i.test(
-       (x.textContent||'').trim()
-      )
-     ){
-      x.remove()
-     }
-    })
   };
 
-  clean();
+  audio.onerror=()=>{
 
-  new MutationObserver(
-   clean
-  ).observe(
-   document.body,
-   {
-    childList:true,
-    subtree:true
+   if(capOnlineMusic===audio){
+    capOnlineMusic=null
    }
-  )
- }
-);
 
-const capOriginalCreateTextV51=
- capGenerateTextV14;
+   if(playing){
+    setTimeout(
+     playPlaylistMusic,
+     400
+    )
+   }
+  };
 
-capGenerateTextV14=
- async function(){
-  await capOriginalCreateTextV51();
+  try{
 
-  const text=
-   capGetGeneratedTextV14();
+   await audio.play()
 
-  if(text){
-   capSetPhraseStageV25()
+  }catch(e){
+
+   console.warn(
+    'Falha ao iniciar música:',
+    e
+   );
+
+   playing=false;
+
+   if(
+    typeof syncPlayUi===
+    'function'
+   ){
+    syncPlayUi()
+   }
   }
+ }
+
+ window.capLoadAllPlaylistsFinal=
+  loadAllPlaylists;
+
+ window.capPlayPlaylistMusicFinal=
+  playPlaylistMusic;
+
+ window.capHasPlaylistFinal=
+  ()=>capPlaylistTracks.length>0;
+
+ window.capCurrentPlaylistFinal=
+  ()=>selectedPlaylist();
+
+ const oldApply=
+  applyAdmStore;
+
+ applyAdmStore=function(c){
+
+  oldApply(c);
+
+  capPlaylistCurrent=
+   localStorage.getItem(
+    playlistStorageKey()
+   )||'';
+
+  capPlaylistTrackIndex=0;
+
+  setTimeout(
+   loadAllPlaylists,
+   50
+  )
  };
 
-function capApplyMusicVolumeV39(){
- const e=
+ const originalNextMusic=
+  playNextAdmMusic;
+
+ playNextAdmMusic=
+  async function(){
+
+   if(capPlaylistTracks.length){
+    return playPlaylistMusic()
+   }
+
+   await loadAllPlaylists();
+
+   if(capPlaylistTracks.length){
+    return playPlaylistMusic()
+   }
+
+   try{
+    return originalNextMusic()
+   }catch(e){
+    console.warn(e)
+   }
+  };
+
+ const volume=
   document.getElementById(
    'musicVol'
   );
 
- if(!e)return;
+ if(volume){
 
- const v=
-  Math.max(
-   0,
-   Math.min(
-    100,
-    Number(e.value||75)
-   )
-  )/100;
+  volume.addEventListener(
+   'input',
+   ()=>{
 
- if(radioAudio){
-  radioAudio.volume=v
- }
+    if(capOnlineMusic){
 
- capSaveSettings()
-}
-
-function capApplyBedVolumeV39(){
- const e=
-  document.getElementById(
-   'bedVol'
-  );
-
- if(!e)return;
-
- const v=
-  Math.max(
-   0,
-   Math.min(
-    100,
-    Number(e.value||6)
-   )
-  )/100;
-
- if(window.capCurrentBedAudio){
-  window.capCurrentBedAudio.volume=
-   v
- }
-
- capSaveSettings()
-}
-
-window.capApplyMusicVolumeV39=
- capApplyMusicVolumeV39;
-
-window.capApplyBedVolumeV39=
- capApplyBedVolumeV39;
-
-window.addEventListener(
- 'DOMContentLoaded',
- ()=>{
-  const music=
-   document.getElementById(
-    'musicVol'
-   );
-
-  const bed=
-   document.getElementById(
-    'bedVol'
-   );
-
-  if(music){
-   music.addEventListener(
-    'input',
-    capApplyMusicVolumeV39
-   )
-  }
-
-  if(bed){
-   bed.addEventListener(
-    'input',
-    capApplyBedVolumeV39
-   )
-  }
- }
-);
-
-/* =========================================================
-   TOP DO DIA
-   Usa as categorias:
-   topOpen
-   topClose
-========================================================= */
-
-function capJingleMatchesTopV51(
- v,
- kind
-){
- const c=
-  capJingleCategoryV51(v);
-
- if(kind==='topOpening'){
-  return (
-   c.includes('top')&&
-   (
-    c.includes('open')||
-    c.includes('entrada')||
-    c.includes('inicio')||
-    c.includes('abertura')
-   )
-  )
- }
-
- if(kind==='topClosing'){
-  return (
-   c.includes('top')&&
-   (
-    c.includes('close')||
-    c.includes('saida')||
-    c.includes('fim')||
-    c.includes('fechamento')
-   )
-  )
- }
-
- return false
-}
-
-async function capOptionalTopJingleV51(
- kind
-){
- if(
-  document.getElementById(
-   'jingles'
-  )?.checked!==true
- ){
-  return false
- }
-
- try{
-  const online=
-   await capLoadOnlineJinglesV51();
-
-  const ready=
-   online.filter(
-    v=>
-     v&&
-     v.active!==false&&
-     v.ativo!==false&&
-     v.paused!==true&&
-     v.pausado!==true&&
-     capJingleMatchesRamoV51(v)&&
-     capJingleMatchesTopV51(
-      v,
-      kind
-     )
-   );
-
-  if(ready.length){
-   const v=
-    ready[
-     Math.floor(
-      Math.random()*
-      ready.length
-     )
-    ];
-
-   const url=
-    capJingleUrlV51(v);
-
-   if(url){
-    const ok=
-     await capPlayUrlV16(
-      url,
-      1
-     );
-
-    if(ok){
-     return true
+     capOnlineMusic.volume=
+      Math.max(
+       0,
+       Math.min(
+        1,
+        +volume.value/100
+       )
+      )
     }
    }
-  }
-
-  const all=
-   capSafeJson(
-    'capivara_vignettes_v8',
-    {}
-   );
-
-  const ramo=
-   all[store.ramo]||
-   all[store.type]||
-   {};
-
-  const cat=
-   kind==='topOpening'
-    ?'topOpen'
-    :'topClose';
-
-  const arr=
-   Array.isArray(
-    ramo[cat]
-   )
-    ?ramo[cat]
-    :[];
-
-  const readyLocal=
-   arr.filter(
-    v=>v&&v.audioKey
-   );
-
-  if(readyLocal.length){
-   const v=
-    readyLocal[0];
-
-   const blob=
-    await capGetDbBlobV36(
-     'CapivaraRadioAudio',
-     1,
-     'audios',
-     v.audioKey
-    );
-
-   if(blob){
-    const u=
-     URL.createObjectURL(
-      blob
-     );
-
-    const ok=
-     await capPlayUrlV16(
-      u,
-      1
-     );
-
-    URL.revokeObjectURL(u);
-
-    return ok
-   }
-  }
-
- }catch(e){
-  console.error(
-   'Vinheta TOP:',
-   e
   )
  }
 
- return false
-}
+ setTimeout(
+  loadAllPlaylists,
+  800
+ )
+})();
 
 /* =========================================================
-   ESTADO CENTRAL DO CLIENTE
+   CONTINUAÇÃO DA MÚSICA APÓS BLOCO
 ========================================================= */
 
-async function capPullClientStateV50(){
- if(
-  !capClientReady||
-  !store.code
- ){
-  return
- }
+capContinueMusicV16=
+ async function(){
 
- try{
-  const r=
-   await fetch(
-    CAP_SERVER_V50+
-    '/api/client/'+
-    encodeURIComponent(
-     store.code
-    )+
-    '/state',
-    {
-     headers:{
-      'Accept':
-       'application/json'
-     }
-    }
-   );
+  if(!playing)return;
 
-  if(!r.ok){
-   return
-  }
-
-  const j=
-   await r.json();
-
-  const s=
-   j?.state||
-   j?.data||
-   j||
-   {};
-
-  if(Array.isArray(s.ads)){
-   /*
-     Áudios locais continuam locais.
-     Não substitui anúncio que possui
-     Blob local válido por metadado vazio.
-   */
-   const serverAds=
-    s.ads.filter(
-     a=>
-      !a.clientCode||
-      String(
-       a.clientCode
-      )===
-      String(
-       store.code
-      )
-    );
-
-   if(serverAds.length){
-    const localMap=
-     new Map(
-      ads.map(
-       a=>[
-        a.id,
-        a
-       ]
-      )
-     );
-
-    ads=
-     serverAds.map(
-      a=>{
-       const local=
-        localMap.get(
-         a.id
-        );
-
-       if(
-        local?.audioKey&&
-        !a.audioKey
-       ){
-        return {
-         ...a,
-         audioKey:
-          local.audioKey
-        }
-       }
-
-       return a
-      }
-     );
-
-    localStorage.setItem(
-     capClientKey(
-      'cap_ads'
-     ),
-     JSON.stringify(ads)
-    )
-   }
+  if(
+   typeof window.capHasPlaylistFinal===
+    'function' &&
+   window.capHasPlaylistFinal() &&
+   typeof window.capPlayPlaylistMusicFinal===
+    'function'
+  ){
+   return window.capPlayPlaylistMusicFinal()
   }
 
   if(
-   Number.isFinite(
-    +s.voiceTurn
-   )
+   typeof window.capHasRemotePlaylistV53===
+    'function' &&
+   window.capHasRemotePlaylistV53() &&
+   typeof window.capPlayRemoteNextV53===
+    'function'
   ){
-   voiceTurn=
-    +s.voiceTurn;
-
-   localStorage.setItem(
-    capClientKey(
-     'cap_voice'
-    ),
-    String(voiceTurn)
-   )
+   return window.capPlayRemoteNextV53()
   }
 
-  if(s.adsPerBlock){
-   localStorage.setItem(
-    'cap_ads_per_block_'+
-    store.code,
-    String(
-     s.adsPerBlock
-    )
-   );
+  return playNextAdmMusic()
+ };
 
-   setAdsPerBlock(
-    s.adsPerBlock,
-    false
-   )
-  }
+/* =========================================================
+   TOP DO DIA
+   NÃO CORTA A MÚSICA
+========================================================= */
 
-  renderAds();
-  renderCreatedAudiosV19();
+function capTakeTopFirstFinal(){
 
- }catch(e){
-  console.warn(
-   'Estado central indisponível; usando cache individual local.',
-   e
-  )
+ const active=
+  capActiveAdsV16();
+
+ const today=
+  dayKey();
+
+ const top=
+  active.find(a=>
+   a.top &&
+   a._capPlayedToday!==today
+  );
+
+ if(top){
+
+  top._capPlayedToday=today;
+
+  saveAds();
+
+  return [top]
  }
+
+ const normal=
+  active.filter(
+   a=>!a.top
+  );
+
+ if(!normal.length){
+  return []
+ }
+
+ const count=
+  Math.max(
+   1,
+   parseInt(
+    document.getElementById(
+     'adsPerBlock'
+    )?.value||3,
+    10
+   )
+  );
+
+ const result=[];
+
+ for(
+  let i=0;
+  i<count;
+  i++
+ ){
+
+  if(!normal.length)break;
+
+  result.push(
+   normal[
+    capAdCursorV16%
+    normal.length
+   ]
+  );
+
+  capAdCursorV16++
+ }
+
+ return result
 }
 
-async function capPushClientStateV50(){
- if(
-  !capClientReady||
-  !store.code
- ){
-  return
- }
+capTakeAdsV16=
+ capTakeTopFirstFinal;
 
- try{
-  const safeAds=
-   ads.map(
-    a=>({
-     ...a,
-     clientCode:
-      String(store.code)
-    })
+/* =========================================================
+   FUNDO SOMENTE DO RAMO
+   SEM FUNDO GERAL
+========================================================= */
+
+capBackgroundListV16=
+ async function(){
+
+  const all=
+   await capFetchAssetGroupV16(
+    'backgrounds'
    );
 
-  await fetch(
-   CAP_SERVER_V50+
-   '/api/client/'+
-   encodeURIComponent(
-    store.code
-   )+
-   '/state',
-   {
-    method:'PUT',
-    headers:{
-     'Content-Type':
-      'application/json'
-    },
-    body:JSON.stringify({
-     ads:safeAds,
-     voiceTurn,
-     adsPerBlock:
-      +(
-       document.getElementById(
-        'adsPerBlock'
-       )?.value||
-       3
-      ),
-     updatedAt:
-      new Date()
-       .toISOString()
-    })
+  if(
+   !all ||
+   typeof all!=='object'
+  ){
+   return []
+  }
+
+  const ramo=
+   store.ramo||
+   store.type||
+   '';
+
+  const ramoData=
+   capFindRamoObjectV16(
+    all,
+    ramo
+   );
+
+  if(!ramoData){
+   return []
+  }
+
+  let list=[];
+
+  if(Array.isArray(ramoData)){
+
+   list=ramoData
+
+  }else if(
+   ramoData &&
+   typeof ramoData==='object'
+  ){
+
+   if(
+    Array.isArray(
+     ramoData.backgrounds
+    )
+   ){
+    list=
+     ramoData.backgrounds
+
+   }else if(
+    Array.isArray(
+     ramoData.items
+    )
+   ){
+    list=
+     ramoData.items
+
+   }else if(
+    Array.isArray(
+     ramoData.tracks
+    )
+   ){
+    list=
+     ramoData.tracks
+
+   }else{
+
+    list=
+     Object.values(
+      ramoData
+     )
+     .filter(v=>
+      v &&
+      (
+       typeof v==='string' ||
+       typeof v==='object'
+      )
+     )
    }
+  }
+
+  return list.filter(
+   item=>!!capMediaUrlV16(item)
+  )
+ };
+
+/* =========================================================
+   VINHETAS SOMENTE DO RAMO
+========================================================= */
+
+capPlayJingleV16=
+ async function(category){
+
+  const enabled=
+   document.getElementById(
+    'jingles'
+   )?.checked!==false;
+
+  if(!enabled){
+   return false
+  }
+
+  const all=
+   await capFetchAssetGroupV16(
+    'jingles'
+   );
+
+  const ramo=
+   store.ramo||
+   store.type||
+   '';
+
+  const ramoData=
+   capFindRamoObjectV16(
+    all,
+    ramo
+   );
+
+  if(!ramoData){
+   return false
+  }
+
+  const list=
+   capCategoryItemsV16(
+    ramoData,
+    category
+   )
+   .filter(item=>
+    !!capMediaUrlV16(item)
+   );
+
+  if(!list.length){
+   return false
+  }
+
+  const key=
+   normRamo(ramo)+
+   '|'+
+   category;
+
+  const cursor=
+   capJingleCursorV16[key]||0;
+
+  const item=
+   list[
+    cursor%
+    list.length
+   ];
+
+  capJingleCursorV16[key]=
+   (
+    cursor+1
+   )%
+   list.length;
+
+  return capPlayUrlV16(
+   capMediaUrlV16(item),
+   1
+  )
+ };
+
+/* =========================================================
+   BLOCO RESILIENTE
+   MÚSICA, VINHETA E FUNDO SÃO INDEPENDENTES
+========================================================= */
+
+capPlayAdBlockV16=
+ async function(block){
+
+  if(
+   !Array.isArray(block) ||
+   !block.length
+  ){
+   return false
+  }
+
+  const top=
+   block.length===1 &&
+   block[0]?.top;
+
+  const open=
+   top
+    ?'topOpen'
+    :'offerOpen';
+
+  const close=
+   top
+    ?'topClose'
+    :'offerClose';
+
+  try{
+
+   await capPlayJingleV16(
+    open
+   )
+
+  }catch(e){
+
+   console.warn(
+    'Vinheta de entrada ignorada:',
+    e
+   )
+  }
+
+  let bed=null;
+
+  try{
+
+   bed=
+    await capStartBackgroundV16()
+
+  }catch(e){
+
+   bed=null
+  }
+
+  try{
+
+   for(
+    const ad of block
+   ){
+
+    if(!playing){
+     break
+    }
+
+    try{
+
+     await capPlayAdV16(
+      ad
+     )
+
+    }catch(e){
+
+     console.warn(
+      'Anúncio ignorado:',
+      e
+     )
+    }
+   }
+
+  }finally{
+
+   if(bed){
+    capStopBackgroundV16()
+   }
+  }
+
+  if(playing){
+
+   try{
+
+    await capPlayJingleV16(
+     close
+    )
+
+   }catch(e){
+
+    console.warn(
+     'Vinheta de saída ignorada:',
+     e
+    )
+   }
+  }
+
+  return true
+ };
+
+/* =========================================================
+   APÓS A MÚSICA
+========================================================= */
+
+capRadioAfterMusicV16=
+ async function(){
+
+  if(
+   capRadioBusyV16 ||
+   !playing
+  ){
+   return
+  }
+
+  capRadioBusyV16=true;
+
+  try{
+
+   const block=
+    capTakeAdsV16();
+
+   if(block.length){
+
+    await capPlayAdBlockV16(
+     block
+    )
+   }
+
+  }catch(e){
+
+   console.warn(
+    'Erro no bloco:',
+    e
+   )
+
+  }finally{
+
+   capRadioBusyV16=false
+  }
+
+  if(playing){
+
+   await capContinueMusicV16()
+  }
+ };
+
+window.capRadioAfterMusicV16=
+ capRadioAfterMusicV16;
+
+/* =========================================================
+   SEM MÚSICA:
+   ANÚNCIO NÃO FICA BLOQUEADO
+========================================================= */
+
+capScheduleNoMusicBlockV16=
+ function(){
+
+  clearTimeout(
+   capNoMusicTimerV16
+  );
+
+  if(!playing)return;
+
+  let hasMusic=false;
+
+  try{
+
+   hasMusic=
+    (
+     typeof window.capHasPlaylistFinal===
+      'function' &&
+     window.capHasPlaylistFinal()
+    ) ||
+    (
+     typeof window.capHasRemotePlaylistV53===
+      'function' &&
+     window.capHasRemotePlaylistV53()
+    ) ||
+    themeMusicV11(
+     selectedThemeV11
+    ).length>0
+
+  }catch(e){}
+
+  if(hasMusic){
+   return
+  }
+
+  capNoMusicTimerV16=
+   setTimeout(
+    async()=>{
+
+     if(!playing){
+      return
+     }
+
+     try{
+
+      const block=
+       capTakeAdsV16();
+
+      if(block.length){
+
+       await capPlayAdBlockV16(
+        block
+       )
+      }
+
+     }catch(e){
+
+      console.warn(
+       'Bloco sem música:',
+       e
+      )
+     }
+
+     capScheduleNoMusicBlockV16()
+
+    },
+    60000
+   )
+ };
+
+/* =========================================================
+   DESISTIR:
+   NÃO APAGA A FRASE
+========================================================= */
+
+(function(){
+
+ function install(){
+
+  let btn=
+   document.getElementById(
+    'capDiscardFinal'
+   );
+
+  if(btn)return;
+
+  const gen=
+   document.querySelector(
+    '[data-gen="1"]'
+   );
+
+  if(!gen)return;
+
+  btn=
+   document.createElement(
+    'button'
+   );
+
+  btn.id=
+   'capDiscardFinal';
+
+  btn.type=
+   'button';
+
+  btn.className=
+   'discardGeneratedBtn';
+
+  btn.textContent=
+   '✕ DESISTIR';
+
+  btn.onclick=()=>{
+
+   try{
+
+    Object.values(
+     pendingAudio||{}
+    ).forEach(p=>{
+
+     if(p?.url){
+      URL.revokeObjectURL(
+       p.url
+      )
+     }
+    })
+
+   }catch(e){}
+
+   pendingAudio={};
+
+   ['audio1','audio2']
+    .forEach(id=>{
+
+     const a=
+      document.getElementById(
+       id
+      );
+
+     if(!a)return;
+
+     try{
+      a.pause()
+     }catch(e){}
+
+     a.removeAttribute(
+      'src'
+     )
+    });
+
+   ['actions1','actions2']
+    .forEach(id=>{
+
+     const el=
+      document.getElementById(
+       id
+      );
+
+     if(el){
+      el.classList.add(
+       'hidden'
+      )
+     }
+    });
+
+   capPendingDecision=false;
+
+   const suggest=
+    document.getElementById(
+     'suggest'
+    );
+
+   const top=
+    document.getElementById(
+     'topDay'
+    );
+
+   if(suggest){
+    suggest.style.display=''
+   }
+
+   if(top){
+    top.style.display=''
+   }
+
+   const suggestions=
+    document.getElementById(
+     'suggestions'
+    );
+
+   if(suggestions){
+    suggestions.classList.add(
+     'hidden'
+    )
+   }
+
+   const brief=
+    document.getElementById(
+     'brief'
+    );
+
+   const text1=
+    document.getElementById(
+     'text1'
+    );
+
+   if(
+    brief &&
+    text1 &&
+    text1.value.trim()
+   ){
+    brief.value=
+     text1.value.trim()
+   }
+
+   capRefreshGuide()
+  };
+
+  gen.parentElement.appendChild(
+   btn
+  )
+ }
+
+ setTimeout(
+  install,
+  300
+ )
+})();
+
+/* =========================================================
+   GERAR ÁUDIO -> SALVAR DIRETO NA PROGRAMAÇÃO
+========================================================= */
+
+async function capSaveGeneratedDirectFinal(n){
+
+ const p=
+  pendingAudio[n];
+
+ if(!p){
+  return false
+ }
+
+ if(
+  todayCreated()>=
+  capLimits().daily
+ ){
+  alert(
+   'O limite diário de anúncios foi atingido.'
+  );
+
+  return false
+ }
+
+ if(
+  weekCreated()>=
+  capLimits().weekly
+ ){
+  alert(
+   'O limite semanal de anúncios foi atingido.'
+  );
+
+  return false
+ }
+
+ if(
+  p.top &&
+  topCreatedToday()>=
+  capLimits().top
+ ){
+  alert(
+   'O limite diário de TOP foi atingido.'
+  );
+
+  return false
+ }
+
+ const id=
+  'ad_'+
+  Date.now()+
+  '_'+
+  Math.random()
+   .toString(36)
+   .slice(2,7);
+
+ const audioKey=
+  capClientAudioKey(id);
+
+ try{
+
+  await capSaveAdBlob(
+   audioKey,
+   p.blob
   );
 
  }catch(e){
-  console.warn(
-   'Não foi possível sincronizar o estado agora.',
-   e
-  )
+
+  alert(
+   'Não foi possível salvar o áudio.'
+  );
+
+  return false
  }
-}
 
-const capOldApplyAdmStoreV50=
- applyAdmStore;
+ const days=
+  +(
+   document.getElementById(
+    'duration'
+   )?.value||1
+  );
 
-applyAdmStore=function(c){
- capOldApplyAdmStoreV50(c);
+ const exp=
+  Date.now()+
+  Math.max(1,days)*
+  86400000;
 
- setTimeout(
-  capPullClientStateV50,
-  0
+ ads.push({
+
+  id,
+
+  label:
+   p.label||
+   p.product||
+   'anúncio',
+
+  product:
+   p.product||
+   '',
+
+  price:
+   p.price||
+   '',
+
+  text:
+   p.text,
+
+  voice:
+   p.voice,
+
+  paused:false,
+
+  exp,
+
+  audioKey,
+
+  top:
+   !!p.top,
+
+  createdDay:
+   dayKey(),
+
+  createdAt:
+   Date.now()
+ });
+
+ registerUse(
+  !!p.top
  );
 
- /*
-   Atualiza vinhetas online
-   ao entrar no cliente.
-  */
- setTimeout(
-  ()=>capLoadOnlineJinglesV51(true),
-  100
- )
-};
+ pendingAudio[n]=null;
 
-const capOldSaveAdsV50=
- saveAds;
+ saveAds();
 
-saveAds=function(){
- capOldSaveAdsV50();
+ renderCreatedAudiosV19();
 
- capPushClientStateV50()
-};
+ if(
+  p.top
+ ){
+  setCreateMode(
+   'normal'
+  )
+ }
+
+ return true
+}
 
 /* =========================================================
-   CHECKBOX DAS VINHETAS
-   MARCADO = TOCA
-   DESMARCADO = NÃO TOCA
-   SALVO INDIVIDUALMENTE POR CLIENTE
+   NOVO GERAR ÁUDIO
+   1 CLIQUE = GERA + SALVA + FILA
 ========================================================= */
 
-function capBindJinglesV51(){
+generateVoice=
+ async function(n,btn){
+
+  let text=
+   document.getElementById(
+    'text'+n
+   )?.value.trim()||
+   document.getElementById(
+    'brief'
+   )?.value.trim()||
+   '';
+
+  text=
+   text
+    .toLowerCase()
+    .slice(0,150);
+
+  if(!text){
+   return
+  }
+
+  btn.disabled=true;
+  btn.textContent=
+   'GERANDO ÁUDIO...';
+
+  try{
+
+   const p=
+    await capGenerateAudioDirectV50(
+     text
+    );
+
+   const url=
+    URL.createObjectURL(
+     p.blob
+    );
+
+   pendingAudio[n]={
+    ...p,
+    url
+   };
+
+   const preview=
+    document.getElementById(
+     'audio'+n
+    );
+
+   if(preview){
+    preview.src=url
+   }
+
+   const ok=
+    await capSaveGeneratedDirectFinal(
+     n
+    );
+
+   if(!ok){
+    throw new Error(
+     'Áudio não foi salvo.'
+    )
+   }
+
+   btn.textContent=
+    '✓ ÁUDIO NA PROGRAMAÇÃO';
+
+   setTimeout(()=>{
+
+    capResetCreateV20();
+
+    capStageV21(
+     'start'
+    );
+
+    btn.textContent=
+     '🔊 GERAR ÁUDIO';
+
+   },900);
+
+  }catch(e){
+
+   console.error(e);
+
+   alert(
+    'ERRO AO GERAR ÁUDIO\n\n'+
+    (
+     e?.message||
+     e
+    )
+   );
+
+   btn.textContent=
+    '🔊 GERAR ÁUDIO';
+
+  }finally{
+
+   btn.disabled=false
+  }
+ };
+
+document
+ .querySelectorAll(
+  '[data-gen]'
+ )
+ .forEach(b=>{
+
+  b.onclick=()=>{
+
+   generateVoice(
+    b.dataset.gen,
+    b
+   )
+  }
+ });
+
+/* =========================================================
+   ESCONDE O ANTIGO "MANDAR PRA FILA"
+========================================================= */
+
+document
+ .querySelectorAll(
+  '[data-queue]'
+ )
+ .forEach(b=>{
+
+  b.style.display=
+   'none'
+ });
+
+/* =========================================================
+   PRODUTOS RÁPIDOS
+   SEM TEXTO FIXO DE "15"
+========================================================= */
+
+(function(){
+
+ const headings=
+  [
+   ...document.querySelectorAll(
+    'h1,h2,h3,h4,label,span'
+   )
+  ];
+
+ headings.forEach(el=>{
+
+  const t=
+   String(
+    el.textContent||
+    ''
+   );
+
+  if(
+   /15\s+produtos/i.test(t)
+  ){
+
+   el.textContent=
+    t.replace(
+     /15\s+produtos(?:\s+padr[aã]o)?/i,
+     'Produtos rápidos'
+    )
+  }
+ });
+
+ const reset=
+  document.getElementById(
+   'resetProducts'
+  );
+
+ if(reset){
+
+  reset.textContent=
+   'RESTAURAR PADRÕES'
+ }
+})();
+
+/* =========================================================
+   PRODUTOS:
+   PRESERVA A QUANTIDADE SALVA PELO CLIENTE
+========================================================= */
+
+loadRamoProducts=
+ function(){
+
+  let saved=null;
+
+  try{
+
+   saved=
+    JSON.parse(
+     localStorage.getItem(
+      productKey()
+     )||
+     'null'
+    )
+
+  }catch(e){}
+
+  const base=
+   catalogForRamo(
+    store.ramo||
+    store.type
+   );
+
+  products=
+   Array.isArray(saved)&&
+   saved.length
+    ?saved
+    :[...base];
+
+  localStorage.setItem(
+   productKey(),
+   JSON.stringify(products)
+  );
+
+  renderProducts();
+  renderProductEditor()
+ };
+
+/* =========================================================
+   ESTADO DO CLIENTE:
+   PLAYLIST PERSISTE NO SERVIDOR
+========================================================= */
+
+(function(){
+
+ const previousBuild=
+  capBuildRemoteState;
+
+ capBuildRemoteState=
+  function(){
+
+   const state=
+    previousBuild();
+
+   state.selectedPlaylist=
+    localStorage.getItem(
+     'cap_playlist_cliente_'+
+     String(store?.code||'')
+    )||
+    localStorage.getItem(
+     'cap_remote_playlist_'+
+     String(store?.code||'')
+    )||
+    '';
+
+   return state
+  };
+
+ const previousApply=
+  capApplyRemoteState;
+
+ capApplyRemoteState=
+  function(state){
+
+   previousApply(state);
+
+   if(
+    state &&
+    state.selectedPlaylist &&
+    store?.code
+   ){
+
+    localStorage.setItem(
+     'cap_playlist_cliente_'+
+     String(store.code),
+     state.selectedPlaylist
+    );
+
+    localStorage.setItem(
+     'cap_remote_playlist_'+
+     String(store.code),
+     state.selectedPlaylist
+    )
+   }
+
+   setTimeout(()=>{
+
+    if(
+     typeof window.capLoadAllPlaylistsFinal===
+     'function'
+    ){
+     window.capLoadAllPlaylistsFinal()
+    }
+
+   },50)
+  }
+})();
+
+/* =========================================================
+   PAUSAR RÁDIO:
+   NÃO CORTA A MÚSICA QUANDO A PAUSA NÃO FOI PEDIDA
+   MAS PARA TUDO QUANDO O USUÁRIO CLICA PAUSAR
+========================================================= */
+
+(function(){
+
+ const play=
+  document.getElementById(
+   'play'
+  );
+
+ if(!play)return;
+
+ play.onclick=async()=>{
+
+  if(playing){
+
+   playing=false;
+
+   try{
+    if(radioAudio){
+     radioAudio.pause()
+    }
+   }catch(e){}
+
+   try{
+    if(capCurrentSpokenAudio){
+     capCurrentSpokenAudio.pause()
+    }
+   }catch(e){}
+
+   try{
+    capStopBackgroundV16()
+   }catch(e){}
+
+   clearTimeout(
+    capNoMusicTimerV16
+   );
+
+   syncPlayUi();
+
+   const title=
+    document.getElementById(
+     'nowTitle'
+    );
+
+   const sub=
+    document.getElementById(
+     'nowSub'
+    );
+
+   if(title){
+    title.textContent=
+     'Rádio pausada'
+   }
+
+   if(sub){
+    sub.textContent=
+     'Clique em iniciar para continuar'
+   }
+
+   return
+  }
+
+  playing=true;
+
+  syncPlayUi();
+
+  try{
+
+   if(
+    typeof window.capLoadAllPlaylistsFinal===
+    'function'
+   ){
+    await window.capLoadAllPlaylistsFinal()
+   }
+
+   await playNextAdmMusic();
+
+   capScheduleNoMusicBlockV16()
+
+  }catch(e){
+
+   console.error(e);
+
+   capScheduleNoMusicBlockV16()
+  }
+ }
+})();
+
+/* =========================================================
+   CHECKBOX VINHETAS
+   SALVA POR CLIENTE
+========================================================= */
+
+(function(){
+
  const el=
   document.getElementById(
    'jingles'
@@ -5019,251 +4960,373 @@ function capBindJinglesV51(){
  if(!el)return;
 
  const key=
-  'cap_jingles_enabled_'+
-  String(
-   store.code||
-   'default'
-  );
+  'cap_jingles_cliente_'+
+  String(store?.code||'');
 
- const saved=
-  localStorage.getItem(
-   key
-  );
+ const apply=()=>{
 
- if(saved!==null){
-  el.checked=
-   saved==='true'
- }
+  const currentKey=
+   'cap_jingles_cliente_'+
+   String(store?.code||'');
 
- if(
-  !el.dataset.capJingleBind
- ){
-  el.dataset.capJingleBind='1';
-
-  el.addEventListener(
-   'change',
-   ()=>{
-    localStorage.setItem(
-     'cap_jingles_enabled_'+
-     String(
-      store.code||
-      'default'
-     ),
-     String(
-      el.checked
-     )
-    );
-
-    capSaveSettings()
-   }
-  )
- }
-}
-
-const capOldApplyJingleSettingV51=
- applyAdmStore;
-
-applyAdmStore=function(c){
- capOldApplyJingleSettingV51(c);
-
- setTimeout(
-  capBindJinglesV51,
-  0
- )
-};
-
-window.addEventListener(
- 'DOMContentLoaded',
- capBindJinglesV51
-);
-
-/* =========================================================
-   ENTER NO LOGIN
-========================================================= */
-
-window.addEventListener(
- 'DOMContentLoaded',
- ()=>{
-  const code=
-   document.getElementById(
-    'code'
+  const saved=
+   localStorage.getItem(
+    currentKey
    );
 
-  if(!code)return;
+  if(saved!==null){
+   el.checked=
+    saved==='true'
+  }
+ };
 
-  code.addEventListener(
-   'keydown',
-   e=>{
-    if(e.key!=='Enter'){
-     return
-    }
-
-    e.preventDefault();
-
-    const enter=
-     document.getElementById(
-      'enter'
-     );
-
-    if(enter){
-     enter.click()
-    }
-   }
-  )
- }
-);
-
-/* =========================================================
-   RESTAURAR CONFIGURAÇÕES
-========================================================= */
-
-window.addEventListener(
- 'DOMContentLoaded',
- ()=>{
-  const restore=
-   document.getElementById(
-    'restore'
-   );
-
-  if(!restore)return;
-
-  restore.onclick=()=>{
-   const music=
-    document.getElementById(
-     'musicVol'
-    );
-
-   const bed=
-    document.getElementById(
-     'bedVol'
-    );
-
-   const jingles=
-    document.getElementById(
-     'jingles'
-    );
-
-   const mention=
-    document.getElementById(
-     'mentionStore'
-    );
-
-   const currency=
-    document.getElementById(
-     'fullCurrency'
-    );
-
-   const open=
-    document.getElementById(
-     'open'
-    );
-
-   const close=
-    document.getElementById(
-     'close'
-    );
-
-   if(music){
-    music.value=
-     defaults.musicVol
-   }
-
-   if(bed){
-    bed.value=
-     defaults.bedVol
-   }
-
-   if(jingles){
-    jingles.checked=
-     defaults.jingles
-   }
-
-   if(mention){
-    mention.checked=
-     defaults.mentionStore
-   }
-
-   if(currency){
-    currency.checked=
-     defaults.fullCurrency
-   }
-
-   if(open){
-    open.value=
-     defaults.open
-   }
-
-   if(close){
-    close.value=
-     defaults.close
-   }
-
-   capSaveSettings();
+ el.addEventListener(
+  'change',
+  ()=>{
 
    localStorage.setItem(
-    'cap_jingles_enabled_'+
-    String(
-     store.code||
-     'default'
-    ),
-    String(
-     defaults.jingles
-    )
+    'cap_jingles_cliente_'+
+    String(store?.code||''),
+    String(el.checked)
    );
 
-   capApplyMusicVolumeV39();
-   capApplyBedVolumeV39()
+   capPushClientStateV50()
   }
- }
-);
+ );
+
+ const oldApply=
+  applyAdmStore;
+
+ applyAdmStore=function(c){
+
+  oldApply(c);
+
+  setTimeout(
+   apply,
+   0
+  )
+ };
+
+ apply()
+})();
 
 /* =========================================================
-   SEGURANÇA DO FLUXO DA RÁDIO
-   Se a vinheta falhar, a rádio continua.
+   FUNDO — VOLUME SALVO POR CLIENTE
 ========================================================= */
 
-window.addEventListener(
- 'error',
- e=>{
-  const msg=
-   String(
-    e?.message||
-    ''
+(function(){
+
+ const el=
+  document.getElementById(
+   'bedVol'
+  );
+
+ if(!el)return;
+
+ function key(){
+
+  return (
+   'cap_bed_volume_'+
+   String(store?.code||'')
+  )
+ }
+
+ function apply(){
+
+  const saved=
+   localStorage.getItem(
+    key()
    );
+
+  if(saved!==null){
+   el.value=saved
+  }
+ }
+
+ el.addEventListener(
+  'input',
+  ()=>{
+
+   localStorage.setItem(
+    key(),
+    el.value
+   );
+
+   if(capCurrentBedAudio){
+
+    capCurrentBedAudio.volume=
+     Math.max(
+      0,
+      Math.min(
+       1,
+       +el.value/100
+      )
+     )
+   }
+
+   capPushClientStateV50()
+  }
+ );
+
+ const oldApply=
+  applyAdmStore;
+
+ applyAdmStore=function(c){
+
+  oldApply(c);
+
+  setTimeout(
+   apply,
+   0
+  )
+ };
+
+ apply()
+})();
+
+/* =========================================================
+   PROGRAMAÇÃO POR HORÁRIO
+========================================================= */
+
+function capInsideScheduleFinal(){
+
+ const open=
+  document.getElementById(
+   'open'
+  )?.value||
+  '00:00';
+
+ const close=
+  document.getElementById(
+   'close'
+  )?.value||
+  '23:59';
+
+ const now=
+  new Date();
+
+ const hhmm=
+  String(
+   now.getHours()
+  ).padStart(2,'0')+
+  ':'+
+  String(
+   now.getMinutes()
+  ).padStart(2,'0');
+
+ if(open<=close){
+
+  return (
+   hhmm>=open &&
+   hhmm<=close
+  )
+ }
+
+ return (
+  hhmm>=open ||
+  hhmm<=close
+ )
+}
+
+/* =========================================================
+   NÃO COMEÇA NOVA FAIXA FORA DO HORÁRIO
+   O ÁUDIO ATUAL TERMINA NORMALMENTE
+========================================================= */
+
+const capContinueMusicBeforeSchedule=
+ capContinueMusicV16;
+
+capContinueMusicV16=
+ async function(){
+
+  if(!playing)return;
 
   if(
-   /audio|vinheta|jingle/i.test(
-    msg
-   )
+   !capInsideScheduleFinal()
   ){
-   console.warn(
-    'Áudio ignorado:',
-    msg
-   )
+
+   playing=false;
+
+   syncPlayUi();
+
+   const title=
+    document.getElementById(
+     'nowTitle'
+    );
+
+   const sub=
+    document.getElementById(
+     'nowSub'
+    );
+
+   if(title){
+    title.textContent=
+     'Programação encerrada'
+   }
+
+   if(sub){
+    sub.textContent=
+     'A rádio volta no próximo horário configurado'
+   }
+
+   return
   }
- }
-);
+
+  return capContinueMusicBeforeSchedule()
+ };
 
 /* =========================================================
-   INICIALIZAÇÃO FINAL
+   LIMPEZA DE DUPLICAÇÕES VISUAIS DE PLAYLIST
 ========================================================= */
 
-window.addEventListener(
- 'load',
- ()=>{
-  try{
-   renderProducts();
-   renderProductEditor();
-   renderAds();
-   renderCreatedAudiosV19();
-   renderThemesV11();
-   refreshQuota();
-   capSetPlayingUI()
-  }catch(e){
-   console.error(
-    'Inicialização:',
-    e
-   )
-  }
+setTimeout(()=>{
+
+ const finalHost=
+  document.getElementById(
+   'capPlaylistChooserFinal'
+  );
+
+ const oldHost=
+  document.getElementById(
+   'capPlaylistOnlineV53'
+  );
+
+ if(
+  finalHost &&
+  oldHost &&
+  finalHost!==oldHost
+ ){
+  oldHost.style.display=
+   'none'
  }
-);
+
+},1200);
+
+/* =========================================================
+   SINCRONIZAÇÃO AO TROCAR DE CLIENTE
+========================================================= */
+
+const capFinalApplyStore=
+ applyAdmStore;
+
+applyAdmStore=
+ function(c){
+
+  capFinalApplyStore(c);
+
+  setTimeout(()=>{
+
+   loadRamoProducts();
+
+   renderProducts();
+
+   renderProductEditor();
+
+   renderAds();
+
+   renderCreatedAudiosV19();
+
+   refreshQuota();
+
+   capStageV21(
+    'start'
+   );
+
+   if(
+    typeof window.capLoadAllPlaylistsFinal===
+    'function'
+   ){
+    window.capLoadAllPlaylistsFinal()
+   }
+
+  },100)
+ };
+
+/* =========================================================
+   SALVA ALTERAÇÕES IMPORTANTES NO SERVIDOR
+========================================================= */
+
+[
+ 'musicVol',
+ 'bedVol',
+ 'open',
+ 'close',
+ 'jingles',
+ 'mentionStore',
+ 'fullCurrency',
+ 'adsPerBlock'
+].forEach(id=>{
+
+ const el=
+  document.getElementById(id);
+
+ if(!el)return;
+
+ el.addEventListener(
+  'change',
+  ()=>{
+
+   if(
+    typeof capPushClientStateV50===
+    'function'
+   ){
+    capPushClientStateV50()
+   }
+  }
+ )
+});
+
+/* =========================================================
+   RECUPERA PLAYLIST DO ESTADO REMOTO
+========================================================= */
+
+setTimeout(()=>{
+
+ if(
+  store?.code &&
+  typeof capPullClientStateV50===
+   'function'
+ ){
+  capPullClientStateV50()
+ }
+
+},1000);
+
+/* =========================================================
+   ESTADO INICIAL
+========================================================= */
+
+setTimeout(()=>{
+
+ try{
+
+  loadRamoProducts();
+
+  renderAds();
+
+  renderCreatedAudiosV19();
+
+  refreshQuota();
+
+  renderThemesV11();
+
+  capStageV21(
+   'start'
+  );
+
+  if(
+   typeof window.capLoadAllPlaylistsFinal===
+   'function'
+  ){
+   window.capLoadAllPlaylistsFinal()
+  }
+
+ }catch(e){
+
+  console.error(
+   'Capivara Player:',
+   e
+  )
+ }
+
+},1300);
