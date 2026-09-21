@@ -1,3 +1,112 @@
+/* CAPIVARA RADIO — LOGIN DE SEGURANÇA
+   Este bloco fica no topo para o botão ENTRAR continuar funcionando
+   mesmo se alguma parte posterior do app apresentar erro. */
+(function(){
+  const SERVER='https://capivara-radio-server.onrender.com';
+
+  function el(id){ return document.getElementById(id); }
+  function msg(text){
+    const m=el('loginMsg');
+    if(m) m.textContent=text;
+  }
+
+  async function entrarCapivara(){
+    const input=el('code');
+    const btn=el('enter');
+    const code=String(input?.value||'').replace(/\D/g,'').slice(0,6);
+
+    if(code.length!==6){
+      msg('Digite o código de 6 dígitos');
+      if(input) input.focus();
+      return;
+    }
+
+    const old=btn?.textContent||'ENTRAR';
+    if(btn){ btn.disabled=true; btn.textContent='CONECTANDO...'; }
+    msg('');
+
+    const ctrl=new AbortController();
+    const timer=setTimeout(()=>ctrl.abort(),20000);
+
+    try{
+      const r=await fetch(SERVER+'/api/client/'+encodeURIComponent(code),{
+        signal:ctrl.signal,
+        headers:{'Accept':'application/json'},
+        cache:'no-store'
+      });
+
+      let data=null;
+      try{ data=await r.json(); }catch(e){}
+
+      if(r.status===404){
+        msg('Código incorreto');
+        return;
+      }
+      if(!r.ok){
+        msg('Não foi possível conectar ao servidor');
+        return;
+      }
+
+      const c=data?.client||data?.data||data;
+      if(!c || !(c.code||c.codigo)){
+        msg('Código incorreto');
+        return;
+      }
+      if(c.active===false || c.ativo===false){
+        msg('Rádio bloqueada pelo administrador');
+        return;
+      }
+
+      const cliente={
+        name:c.name||c.nome||c.storeName||'Loja',
+        ramo:c.ramo||c.activity||c.segment||'Açougue',
+        code:String(c.code||c.codigo),
+        active:true
+      };
+
+      try{
+        if(typeof applyAdmStore==='function') applyAdmStore(cliente);
+      }catch(e){
+        console.error('Falha ao carregar dados do cliente:',e);
+      }
+
+      const login=el('login');
+      const app=el('app');
+      if(login) login.classList.add('hidden');
+      if(app) app.classList.remove('hidden');
+
+      try{ if(typeof renderAds==='function') renderAds(); }catch(e){}
+      try{ if(typeof renderCreatedAudiosV19==='function') renderCreatedAudiosV19(); }catch(e){}
+    }catch(e){
+      console.error('Erro no login:',e);
+      msg(e?.name==='AbortError'
+        ?'Servidor demorou para responder. Tente novamente.'
+        :'Não foi possível conectar ao servidor');
+    }finally{
+      clearTimeout(timer);
+      if(btn){ btn.disabled=false; btn.textContent=old; }
+    }
+  }
+
+  /* Delegação: funciona mesmo se o botão for criado depois. */
+  document.addEventListener('click',function(e){
+    const b=e.target.closest?.('#enter');
+    if(!b) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    entrarCapivara();
+  },true);
+
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Enter' && el('login') && !el('login').classList.contains('hidden')){
+      e.preventDefault();
+      entrarCapivara();
+    }
+  },true);
+
+  window.capEntrarCliente=entrarCapivara;
+})();
+
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 let ads=[], voiceTurn=0, level='medio', playing=false, createMode='normal';
 let capClientReady=false;
