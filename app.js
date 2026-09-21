@@ -1,108 +1,110 @@
-/* CAPIVARA RADIO — LOGIN DE SEGURANÇA
-   Este bloco fica no topo para o botão ENTRAR continuar funcionando
-   mesmo se alguma parte posterior do app apresentar erro. */
+/* CAPIVARA RADIO — LOGIN V2: nunca fica carregando infinito */
 (function(){
   const SERVER='https://capivara-radio-server.onrender.com';
+  let entrando=false;
 
-  function el(id){ return document.getElementById(id); }
-  function msg(text){
+  const el=id=>document.getElementById(id);
+  function mensagem(t){
     const m=el('loginMsg');
-    if(m) m.textContent=text;
+    if(m) m.textContent=t;
+  }
+  function liberar(btn,rotulo){
+    entrando=false;
+    if(btn){btn.disabled=false;btn.textContent=rotulo||'ENTRAR';}
   }
 
   async function entrarCapivara(){
-    const input=el('code');
-    const btn=el('enter');
+    if(entrando)return;
+    const input=el('code'), btn=el('enter');
     const code=String(input?.value||'').replace(/\D/g,'').slice(0,6);
 
     if(code.length!==6){
-      msg('Digite o código de 6 dígitos');
-      if(input) input.focus();
+      mensagem('Digite o código de 6 dígitos');
+      input?.focus();
       return;
     }
 
-    const old=btn?.textContent||'ENTRAR';
-    if(btn){ btn.disabled=true; btn.textContent='CONECTANDO...'; }
-    msg('');
+    entrando=true;
+    const rotulo=btn?.textContent||'ENTRAR';
+    if(btn){btn.disabled=true;btn.textContent='CONECTANDO...';}
+    mensagem('Conectando à rádio...');
 
     const ctrl=new AbortController();
-    const timer=setTimeout(()=>ctrl.abort(),20000);
+    const timeout=setTimeout(()=>ctrl.abort(),12000);
 
     try{
-      const r=await fetch(SERVER+'/api/client/'+encodeURIComponent(code),{
+      const r=await fetch(SERVER+'/api/client/'+encodeURIComponent(code)+'?t='+Date.now(),{
         signal:ctrl.signal,
-        headers:{'Accept':'application/json'},
+        headers:{Accept:'application/json'},
         cache:'no-store'
       });
 
       let data=null;
-      try{ data=await r.json(); }catch(e){}
+      try{data=await r.json();}catch(_){}
 
-      if(r.status===404){
-        msg('Código incorreto');
-        return;
-      }
-      if(!r.ok){
-        msg('Não foi possível conectar ao servidor');
-        return;
-      }
+      if(r.status===404){mensagem('Código incorreto');return;}
+      if(!r.ok){mensagem('Servidor indisponível. Tente novamente.');return;}
 
       const c=data?.client||data?.data||data;
-      if(!c || !(c.code||c.codigo)){
-        msg('Código incorreto');
-        return;
-      }
+      if(!c || !(c.code||c.codigo)){mensagem('Código incorreto');return;}
       if(c.active===false || c.ativo===false){
-        msg('Rádio bloqueada pelo administrador');
-        return;
+        mensagem('Rádio bloqueada pelo administrador');return;
       }
 
       const cliente={
         name:c.name||c.nome||c.storeName||'Loja',
         ramo:c.ramo||c.activity||c.segment||'Açougue',
+        type:c.ramo||c.activity||c.segment||'Açougue',
         code:String(c.code||c.codigo),
         active:true
       };
 
       try{
-        if(typeof applyAdmStore==='function') applyAdmStore(cliente);
-      }catch(e){
-        console.error('Falha ao carregar dados do cliente:',e);
-      }
+        if(typeof applyAdmStore==='function')applyAdmStore(cliente);
+        else window.store=cliente;
+      }catch(e){console.error(e);}
 
-      const login=el('login');
-      const app=el('app');
-      if(login) login.classList.add('hidden');
-      if(app) app.classList.remove('hidden');
+      el('login')?.classList.add('hidden');
+      el('app')?.classList.remove('hidden');
+      mensagem('');
 
-      try{ if(typeof renderAds==='function') renderAds(); }catch(e){}
-      try{ if(typeof renderCreatedAudiosV19==='function') renderCreatedAudiosV19(); }catch(e){}
+      try{typeof renderAds==='function'&&renderAds();}catch(_){}
+      try{typeof renderCreatedAudiosV19==='function'&&renderCreatedAudiosV19();}catch(_){}
     }catch(e){
-      console.error('Erro no login:',e);
-      msg(e?.name==='AbortError'
-        ?'Servidor demorou para responder. Tente novamente.'
-        :'Não foi possível conectar ao servidor');
+      console.error('LOGIN:',e);
+      mensagem(e?.name==='AbortError'
+        ?'Servidor demorou para responder. Clique em ENTRAR novamente.'
+        :'Não foi possível conectar ao servidor. Tente novamente.');
     }finally{
-      clearTimeout(timer);
-      if(btn){ btn.disabled=false; btn.textContent=old; }
+      clearTimeout(timeout);
+      liberar(btn,rotulo);
     }
   }
 
-  /* Delegação: funciona mesmo se o botão for criado depois. */
-  document.addEventListener('click',function(e){
+  document.addEventListener('click',e=>{
     const b=e.target.closest?.('#enter');
-    if(!b) return;
+    if(!b)return;
     e.preventDefault();
     e.stopImmediatePropagation();
     entrarCapivara();
   },true);
 
-  document.addEventListener('keydown',function(e){
+  document.addEventListener('keydown',e=>{
     if(e.key==='Enter' && el('login') && !el('login').classList.contains('hidden')){
       e.preventDefault();
+      e.stopImmediatePropagation();
       entrarCapivara();
     }
   },true);
+
+  /* trava de segurança visual: mesmo que algo externo falhe, libera o botão */
+  setInterval(()=>{
+    const b=el('enter');
+    if(b && !entrando && b.disabled){
+      b.disabled=false;
+      b.textContent='ENTRAR';
+    }
+  },1500);
 
   window.capEntrarCliente=entrarCapivara;
 })();
