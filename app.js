@@ -1,3 +1,10 @@
+/* CAPIVARA RADIO PLAYER — BUILD LIMPA FINAL
+   Inicialização única: todo o Player só sobe depois que o HTML existe. */
+(function(){
+'use strict';
+
+function CAPIVARA_BOOT(){
+try{
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 let ads=[], voiceTurn=0, level='medio', playing=false, createMode='normal';
 let capClientReady=false;
@@ -98,7 +105,7 @@ let products=catalogForRamo(store.ramo||store.type),selectedProduct='';
 function loadRamoProducts(){
  let saved=null;try{saved=JSON.parse(localStorage.getItem(productKey())||'null')}catch(e){}
  const base=catalogForRamo(store.ramo||store.type);
- products=Array.isArray(saved)&&saved.length===15?saved:[...base];
+ products=Array.isArray(saved)&&saved.length?saved:[...base];
  localStorage.setItem(productKey(),JSON.stringify(products));
  if(typeof renderProducts==='function')renderProducts();
  if(typeof renderProductEditor==='function')renderProductEditor();
@@ -271,16 +278,12 @@ function renderAds(){
 const CAP_SERVER_V50='https://capivara-radio-server.onrender.com';
 
 async function capServerClientV50(code){
- const ctrl=new AbortController();
- const timer=setTimeout(()=>ctrl.abort(),10000);
+ const ctrl=new AbortController(), timer=setTimeout(()=>ctrl.abort(),12000);
  try{
   const r=await fetch(CAP_SERVER_V50+'/api/client/'+encodeURIComponent(code)+'?t='+Date.now(),{
-   signal:ctrl.signal,
-   cache:'no-store',
-   headers:{Accept:'application/json'}
+   signal:ctrl.signal, cache:'no-store', headers:{Accept:'application/json'}
   });
-  let data=null;
-  try{data=await r.json()}catch(e){}
+  let data=null; try{data=await r.json()}catch(_){}
   if(r.status===404)return null;
   if(!r.ok)throw new Error('Servidor '+r.status);
   const c=data?.client||data?.data||data;
@@ -292,77 +295,46 @@ async function capServerClientV50(code){
    code:String(c.code||c.codigo),
    active:c.active!==false&&c.ativo!==false
   };
- }finally{
-  clearTimeout(timer)
- }
+ }finally{clearTimeout(timer)}
 }
 
-async function capLoginVFINAL(){
- const input=document.getElementById('code');
- const btn=document.getElementById('enter');
- const msg=document.getElementById('loginMsg');
+let capLoginBusy=false;
+async function capLoginFinal(){
+ if(capLoginBusy)return;
+ const input=document.getElementById('code'), btn=document.getElementById('enter'), msg=document.getElementById('loginMsg');
  if(!input||!btn)return;
-
  const code=String(input.value||'').replace(/\D/g,'').slice(0,6);
  input.value=code;
- if(code.length!==6){
-  if(msg)msg.textContent='Digite o código de 6 dígitos';
-  input.focus();
-  return;
- }
-
+ if(code.length!==6){if(msg)msg.textContent='Digite o código de 6 dígitos';input.focus();return}
+ capLoginBusy=true;
  const old=btn.textContent||'ENTRAR';
- btn.disabled=true;
- btn.textContent='CONECTANDO...';
- if(msg)msg.textContent='';
-
+ btn.disabled=true; btn.textContent='CONECTANDO...'; if(msg)msg.textContent='';
  try{
   const c=await capServerClientV50(code);
-  if(!c){
-   if(msg)msg.textContent='Código não encontrado';
-   return;
-  }
-  if(!c.active){
-   if(msg)msg.textContent='Rádio bloqueada pelo administrador';
-   return;
-  }
-
+  if(!c){if(msg)msg.textContent='Código não encontrado';return}
+  if(!c.active){if(msg)msg.textContent='Rádio bloqueada pelo administrador';return}
   applyAdmStore(c);
   document.getElementById('login')?.classList.add('hidden');
   document.getElementById('app')?.classList.remove('hidden');
   if(msg)msg.textContent='';
-  try{renderAds()}catch(e){}
-  try{renderCreatedAudiosV19()}catch(e){}
-  try{capPullClientStateV50()}catch(e){}
+  try{renderAds()}catch(_){}
+  try{renderCreatedAudiosV19()}catch(_){}
  }catch(e){
-  console.error('LOGIN:',e);
-  if(msg)msg.textContent=e?.name==='AbortError'
-   ?'Servidor demorou para responder. Tente novamente.'
-   :'Não foi possível conectar ao servidor';
+  console.error('LOGIN CAPIVARA:',e);
+  if(msg)msg.textContent=e?.name==='AbortError'?'Servidor demorou para responder. Tente novamente.':'Não foi possível conectar ao servidor';
  }finally{
-  btn.disabled=false;
-  btn.textContent=old;
+  capLoginBusy=false; btn.disabled=false; btn.textContent=old;
  }
 }
-
-(function(){
- const bind=()=>{
-  const input=document.getElementById('code');
-  const btn=document.getElementById('enter');
-  if(input){
-   input.disabled=false;
-   input.readOnly=false;
-   input.oninput=()=>{input.value=input.value.replace(/\D/g,'').slice(0,6)};
-   input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();capLoginVFINAL()}};
-  }
-  if(btn){
-   btn.disabled=false;
-   btn.onclick=capLoginVFINAL;
-  }
- };
- if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind,{once:true});
- else bind();
-})();
+window.capLoginFinal=capLoginFinal;
+const capCodeInput=document.getElementById('code');
+const capEnterButton=document.getElementById('enter');
+if(capCodeInput){
+ capCodeInput.disabled=false; capCodeInput.readOnly=false;
+ capCodeInput.addEventListener('input',()=>capCodeInput.value=capCodeInput.value.replace(/\D/g,'').slice(0,6));
+ capCodeInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();capLoginFinal()}});
+}
+if(capEnterButton){capEnterButton.disabled=false;capEnterButton.onclick=capLoginFinal}
 
 $$('.tab').forEach(b=>b.onclick=()=>{
  $$('.tab').forEach(x=>x.classList.remove('active'));
@@ -5177,3 +5149,17 @@ setTimeout(()=>{
  }
 
 },1300);
+
+}catch(e){
+ console.error('CAPIVARA BOOT FATAL:',e);
+ const m=document.getElementById('loginMsg');
+ if(m)m.textContent='Erro ao iniciar o Player. Atualize a página.';
+}
+}
+
+if(document.readyState==='loading'){
+ document.addEventListener('DOMContentLoaded',CAPIVARA_BOOT,{once:true});
+}else{
+ CAPIVARA_BOOT();
+}
+})();
