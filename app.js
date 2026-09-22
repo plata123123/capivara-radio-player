@@ -272,12 +272,12 @@ const CAP_SERVER_V50='https://capivara-radio-server.onrender.com';
 
 async function capServerClientV50(code){
  const ctrl=new AbortController();
- const timer=setTimeout(()=>ctrl.abort(),12000);
+ const timer=setTimeout(()=>ctrl.abort(),10000);
  try{
   const r=await fetch(CAP_SERVER_V50+'/api/client/'+encodeURIComponent(code)+'?t='+Date.now(),{
    signal:ctrl.signal,
    cache:'no-store',
-   headers:{'Accept':'application/json'}
+   headers:{Accept:'application/json'}
   });
   let data=null;
   try{data=await r.json()}catch(e){}
@@ -297,70 +297,72 @@ async function capServerClientV50(code){
  }
 }
 
-async function capLoginClienteV51(){
+async function capLoginVFINAL(){
  const input=document.getElementById('code');
  const btn=document.getElementById('enter');
  const msg=document.getElementById('loginMsg');
- if(!input||!btn||!msg)return;
+ if(!input||!btn)return;
 
  const code=String(input.value||'').replace(/\D/g,'').slice(0,6);
  input.value=code;
-
  if(code.length!==6){
-  msg.textContent='Digite o código de 6 dígitos';
+  if(msg)msg.textContent='Digite o código de 6 dígitos';
   input.focus();
-  return
+  return;
  }
 
  const old=btn.textContent||'ENTRAR';
  btn.disabled=true;
  btn.textContent='CONECTANDO...';
- msg.textContent='Conectando...';
+ if(msg)msg.textContent='';
 
  try{
   const c=await capServerClientV50(code);
   if(!c){
-   msg.textContent='Código incorreto';
-   return
+   if(msg)msg.textContent='Código não encontrado';
+   return;
   }
-  if(c.active===false){
-   msg.textContent='Rádio bloqueada pelo administrador';
-   return
+  if(!c.active){
+   if(msg)msg.textContent='Rádio bloqueada pelo administrador';
+   return;
   }
 
   applyAdmStore(c);
   document.getElementById('login')?.classList.add('hidden');
   document.getElementById('app')?.classList.remove('hidden');
-  msg.textContent='';
-  renderAds();
-  renderCreatedAudiosV19();
+  if(msg)msg.textContent='';
+  try{renderAds()}catch(e){}
+  try{renderCreatedAudiosV19()}catch(e){}
+  try{capPullClientStateV50()}catch(e){}
  }catch(e){
-  console.error('Erro no login:',e);
-  msg.textContent=e?.name==='AbortError'
+  console.error('LOGIN:',e);
+  if(msg)msg.textContent=e?.name==='AbortError'
    ?'Servidor demorou para responder. Tente novamente.'
-   :'Não foi possível conectar ao servidor. Tente novamente.';
+   :'Não foi possível conectar ao servidor';
  }finally{
   btn.disabled=false;
-  btn.textContent=old
+  btn.textContent=old;
  }
 }
 
-const capEnterBtnV51=document.getElementById('enter');
-if(capEnterBtnV51)capEnterBtnV51.onclick=capLoginClienteV51;
-
-const capCodeInputV51=document.getElementById('code');
-if(capCodeInputV51){
- capCodeInputV51.addEventListener('input',()=>{
-  capCodeInputV51.value=capCodeInputV51.value.replace(/\D/g,'').slice(0,6)
- });
- capCodeInputV51.addEventListener('keydown',e=>{
-  if(e.key==='Enter'){
-   e.preventDefault();
-   capLoginClienteV51()
+(function(){
+ const bind=()=>{
+  const input=document.getElementById('code');
+  const btn=document.getElementById('enter');
+  if(input){
+   input.disabled=false;
+   input.readOnly=false;
+   input.oninput=()=>{input.value=input.value.replace(/\D/g,'').slice(0,6)};
+   input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();capLoginVFINAL()}};
   }
- });
-}
-
+  if(btn){
+   btn.disabled=false;
+   btn.onclick=capLoginVFINAL;
+  }
+ };
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind,{once:true});
+ else bind();
+})();
 
 $$('.tab').forEach(b=>b.onclick=()=>{
  $$('.tab').forEach(x=>x.classList.remove('active'));
@@ -1335,30 +1337,6 @@ function capPushClientStateV50(){
    )
   }
  },450)
-}
-
-async function capServerLoginV50(code){
- const data=await capFetchJson(
-  CAP_SERVER+
-  '/api/client/'+
-  encodeURIComponent(code)
- );
-
- const c=capNormalizeClient(data,code);
-
- if(!c.code){
-  throw new Error(
-   'Código não encontrado'
-  )
- }
-
- if(!c.active){
-  throw new Error(
-   'Rádio bloqueada pelo administrador'
-  )
- }
-
- return c
 }
 
 async function capGenerateTextServerV50(q){
